@@ -92,7 +92,7 @@ export function SalesKanban({ leads, onMove, onOpen }: { leads: Lead[]; onMove: 
 function Column({ column, leads, onOpen }: { column: (typeof salesColumns)[number]; leads: Lead[]; onOpen: (lead: Lead) => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   return (
-    <section ref={setNodeRef} className={`flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-slate-200 border-t-[3px] bg-slate-100/80 ${column.color} ${isOver ? "ring-2 ring-red-200" : ""}`}>
+    <section ref={setNodeRef} className={`flex min-h-[520px] flex-col rounded-xl border border-slate-200 border-t-[3px] bg-slate-100/80 ${column.color} ${isOver ? "border-[#CD0B16] bg-red-50 ring-1 ring-red-100" : ""}`}>
       <header className="border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -115,7 +115,7 @@ function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: (lead: Lead) => void }
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id });
   const owner = lead.owner ? `${lead.owner.first_name || ""} ${lead.owner.last_name || ""}`.trim() || lead.owner.email : "Atanmadı";
   return (
-    <article ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), zIndex: isDragging ? 30 : undefined }} {...attributes} {...listeners} onClick={() => !isDragging && onOpen(lead)} className={`cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-red-100 hover:shadow-md ${isDragging ? "opacity-70 shadow-xl" : ""}`}>
+    <article ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined }} {...attributes} {...listeners} onClick={() => !isDragging && onOpen(lead)} className={`relative touch-none rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-red-100 hover:shadow-md ${isDragging ? "cursor-grabbing opacity-70 shadow-xl" : "cursor-grab"}`}>
       <div className="flex items-start gap-2">
         <GripVertical className="mt-0.5 shrink-0 text-slate-300" size={14} />
         <div className="min-w-0 flex-1">
