@@ -1,0 +1,3 @@
+"use client";
+import{useState,useTransition}from"react";import{generateRecurringTasks}from"@/lib/actions/operations";import{Button}from"@/components/ui/button";
+export function GenerateRecurringButton({projectId}:{projectId:string}){const[pending,start]=useTransition();const[message,setMessage]=useState("");return <div className="flex items-center gap-3"><Button disabled={pending} onClick={()=>start(async()=>{try{const count=await generateRecurringTasks(projectId);setMessage(count?`${count} görev oluşturuldu.`:"Vadesi gelen şablon yok.")}catch{setMessage("Görevler oluşturulamadı.")}})}>{pending?"Kontrol ediliyor…":"Vadesi gelen görevleri oluştur"}</Button>{message&&<span className="text-sm text-slate-500">{message}</span>}</div>}

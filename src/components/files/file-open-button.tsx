@@ -1,0 +1,3 @@
+"use client";
+import{useState}from"react";import{ExternalLink}from"lucide-react";import{createClient}from"@/lib/supabase/client";
+export function FileOpenButton({path}:{path:string}){const[loading,setLoading]=useState(false);async function open(){setLoading(true);const{data}=await createClient().storage.from("agency-files").createSignedUrl(path,60);if(data?.signedUrl)window.open(data.signedUrl,"_blank","noopener,noreferrer");setLoading(false)}return <button onClick={open} disabled={loading} className="inline-flex items-center gap-1 text-xs font-medium text-[#CD0B16]"><ExternalLink size={13}/>{loading?"Hazırlanıyor…":"Aç"}</button>}
