@@ -10,6 +10,7 @@ import { formatMoney } from "@/lib/utils";
 
 type OfferItem = {
   service_id: string;
+  custom_service_name: string;
   description: string;
   quantity: number;
   unit_price: number;
@@ -32,6 +33,7 @@ type Values = {
 
 const emptyItem: OfferItem = {
   service_id: "",
+  custom_service_name: "",
   description: "",
   quantity: 1,
   unit_price: 0,
@@ -148,7 +150,7 @@ export function OfferForm({
             const serviceRegistration = register(`items.${index}.service_id`);
             return (
               <div key={field.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                <div className="grid items-end gap-3 lg:grid-cols-[190px_minmax(240px,1fr)_90px_140px_110px_100px_40px]">
+                <div className={`grid items-end gap-3 ${customService ? "lg:grid-cols-[190px_minmax(180px,0.8fr)_minmax(240px,1.2fr)_90px_140px_110px_100px_40px]" : "lg:grid-cols-[190px_minmax(240px,1fr)_90px_140px_110px_100px_40px]"}`}>
                   <Field label="Hizmet">
                     <select
                       {...serviceRegistration}
@@ -157,11 +159,10 @@ export function OfferForm({
                         const nextId = event.target.value;
                         const previousName = serviceName(selectedServiceId);
                         const currentDescription = values.items[index]?.description || "";
-                        if (isOther(nextId)) {
-                          if (!currentDescription || currentDescription === previousName) setValue(`items.${index}.description`, "");
-                        } else {
+                        if (!isOther(nextId)) {
                           const nextName = serviceName(nextId);
                           if (!currentDescription || currentDescription === previousName) setValue(`items.${index}.description`, nextName);
+                          setValue(`items.${index}.custom_service_name`, "");
                         }
                       }}
                       className={inputClass}
@@ -170,10 +171,18 @@ export function OfferForm({
                       {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                     </select>
                   </Field>
-                  <Field label={customService ? "Tek seferlik hizmet adı" : "Satır açıklaması"}>
+                  {customService && <Field label="Tek seferlik hizmet adı">
                     <input
                       required
-                      placeholder={customService ? "Örn. Kurumsal sunum tasarımı" : "Teklifte görünecek açıklama"}
+                      placeholder="Örn. Kurumsal sunum tasarımı"
+                      {...register(`items.${index}.custom_service_name`)}
+                      className={inputClass}
+                    />
+                  </Field>}
+                  <Field label="Hizmet açıklaması">
+                    <input
+                      required
+                      placeholder="Yapılacak işin kapsamını ve detaylarını yazın"
                       {...register(`items.${index}.description`)}
                       className={inputClass}
                     />

@@ -124,6 +124,7 @@ export default async function OfferDetail({
                     (x: {
                       id: string;
                       services: { name: string } | null;
+                      custom_service_name: string | null;
                       description: string;
                       quantity: number;
                       unit_price: number;
@@ -132,7 +133,7 @@ export default async function OfferDetail({
                       line_total: number;
                     }) => (
                       <tr key={x.id} className="border-t">
-                        <td className="py-3">{x.services?.name || "—"}</td>
+                        <td className="py-3">{x.custom_service_name || x.services?.name || "—"}</td>
                         <td>{x.description}</td>
                         <td>{x.quantity}</td>
                         <td>{formatMoney(x.unit_price, o.currency)}</td>
