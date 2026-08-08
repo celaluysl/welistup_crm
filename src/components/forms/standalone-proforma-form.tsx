@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
-import { createStandaloneProforma } from "@/lib/actions/offers";
+import { createStandaloneProforma, updateStandaloneProforma } from "@/lib/actions/offers";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { formatMoney } from "@/lib/utils";
@@ -12,11 +12,13 @@ type Item = { service_id: string; service_name: string; description: string; qua
 type Values = { client_mode: "existing" | "manual"; client_id: string; customer_name: string; customer_legal_name: string; customer_tax_office: string; customer_tax_number: string; customer_address: string; customer_phone: string; customer_email: string; issue_date: string; valid_until: string; currency: "TRY" | "USD" | "EUR" | "GBP"; bank_details: string; description: string; payment_terms: string; items: Item[] };
 const emptyItem: Item = { service_id: "", service_name: "", description: "", quantity: 1, unit_price: 0, discount_rate: 0, vat_rate: 20 };
 
-export function StandaloneProformaForm({ clients, services }: { clients: { id: string; company_name: string }[]; services: { id: string; name: string }[] }) {
+type InitialProforma = Partial<Omit<Values, "items" | "client_mode">> & { id: string; items: Item[] };
+
+export function StandaloneProformaForm({ clients, services, initial }: { clients: { id: string; company_name: string }[]; services: { id: string; name: string }[]; initial?: InitialProforma }) {
   const [error, setError] = useState("");
-  const [clientMode, setClientMode] = useState<"existing" | "manual">("existing");
+  const [clientMode, setClientMode] = useState<"existing" | "manual">(initial?.client_id ? "existing" : initial ? "manual" : "existing");
   const [pending, start] = useTransition();
-  const { register, control, handleSubmit, watch, setValue } = useForm<Values>({ defaultValues: { client_mode: "existing", client_id: "", customer_name: "", customer_legal_name: "", customer_tax_office: "", customer_tax_number: "", customer_address: "", customer_phone: "", customer_email: "", issue_date: new Date().toISOString().slice(0, 10), valid_until: "", currency: "TRY", bank_details: "", description: "", payment_terms: "", items: [{ ...emptyItem }] } });
+  const { register, control, handleSubmit, watch, setValue } = useForm<Values>({ defaultValues: { client_mode: initial?.client_id ? "existing" : initial ? "manual" : "existing", client_id: initial?.client_id || "", customer_name: initial?.customer_name || "", customer_legal_name: initial?.customer_legal_name || "", customer_tax_office: initial?.customer_tax_office || "", customer_tax_number: initial?.customer_tax_number || "", customer_address: initial?.customer_address || "", customer_phone: initial?.customer_phone || "", customer_email: initial?.customer_email || "", issue_date: initial?.issue_date || new Date().toISOString().slice(0, 10), valid_until: initial?.valid_until || "", currency: initial?.currency || "TRY", bank_details: initial?.bank_details || "", description: initial?.description || "", payment_terms: initial?.payment_terms || "", items: initial?.items?.length ? initial.items : [{ ...emptyItem }] } });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   // eslint-disable-next-line react-hooks/incompatible-library
   const values = watch();
@@ -24,7 +26,7 @@ export function StandaloneProformaForm({ clients, services }: { clients: { id: s
   const serviceName = (id: string) => services.find((service) => service.id === id)?.name || "";
   const isOther = (id: string) => serviceName(id).trim().toLocaleLowerCase("tr-TR") === "diğer";
 
-  return <form onSubmit={handleSubmit((value) => start(async () => { setError(""); const result = await createStandaloneProforma(value); if (result?.error) setError(result.error); }))} className="space-y-6">
+  return <form onSubmit={handleSubmit((value) => start(async () => { setError(""); const result = initial ? await updateStandaloneProforma({ ...value, proforma_id: initial.id }) : await createStandaloneProforma(value); if (result?.error) setError(result.error); }))} className="space-y-6">
     <input type="hidden" {...register("client_mode")} value={clientMode} />
     <div className="rounded-xl border border-slate-200 p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -77,6 +79,6 @@ export function StandaloneProformaForm({ clients, services }: { clients: { id: s
       <Field label="Banka bilgileri" className="sm:col-span-2"><textarea rows={4} {...register("bank_details")} className={`${inputClass} h-auto py-2`} placeholder="Banka, IBAN ve hesap sahibi" /></Field>
     </div>
     {error && <p className="text-sm text-red-600">{error}</p>}
-    <div className="flex items-center justify-between border-t pt-5"><div><div className="text-xs text-slate-400">Genel toplam</div><div className="text-2xl font-bold">{formatMoney(total, values.currency)}</div></div><Button disabled={pending}>{pending ? "Oluşturuluyor…" : "Proforma oluştur"}</Button></div>
+    <div className="flex items-center justify-between border-t pt-5"><div><div className="text-xs text-slate-400">Genel toplam</div><div className="text-2xl font-bold">{formatMoney(total, values.currency)}</div></div><Button disabled={pending}>{pending ? "Kaydediliyor…" : initial ? "Değişiklikleri kaydet" : "Proforma oluştur"}</Button></div>
   </form>;
 }
