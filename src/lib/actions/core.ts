@@ -260,3 +260,21 @@ export async function updateService(
   revalidatePath("/services");
   return { success: "Hizmet güncellendi." };
 }
+
+export async function deleteService(id: string) {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { error: "Hizmet kaydı geçersiz." };
+  const s = await createClient();
+  const { error } = await s.from("services").delete().eq("id", parsed.data);
+  if (error)
+    return {
+      error:
+        error.code === "23503"
+          ? "Bu hizmet bir proje veya teklif içinde kullanıldığı için silinemez. Düzenleme ekranından pasife alabilirsiniz."
+          : error.code === "42501"
+            ? "Bu işlem için yetkiniz yok."
+            : error.message,
+    };
+  revalidatePath("/services");
+  return { success: "Hizmet silindi." };
+}

@@ -1,3 +1,27 @@
-import{createClient}from"@/lib/supabase/server";import{ServiceForm}from"@/components/forms/service-form";import{EditServiceForm}from"@/components/forms/edit-service-form";import{PageHeader}from"@/components/ui/page-header";import{Card}from"@/components/ui/card";
-const periods:Record<string,string>={monthly:"Aylık",one_time:"Tek seferlik",periodic:"Dönemsel"};
-export default async function Services(){const s=await createClient();const{data}=await s.from("services").select("id,name,category,description,default_periodicity,status").neq("status","archived").order("name");return <><PageHeader title="Hizmetler" description="Global hizmet kataloğunu yönetin."/><Card className="mb-6 p-5"><ServiceForm/></Card><div className="grid gap-4 lg:grid-cols-2">{data?.map(item=><Card key={item.id} className="p-5"><details><summary className="flex list-none items-center justify-between"><div><div className="font-semibold">{item.name}</div><div className="mt-1 text-xs text-slate-500">{item.category||"Kategorisiz"} · {periods[item.default_periodicity]}</div></div><span className={`rounded-full px-3 py-1 text-xs font-medium ${item.status==="active"?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{item.status==="active"?"Aktif":"Pasif"}</span></summary><div className="mt-5 border-t pt-5"><EditServiceForm service={item}/></div></details></Card>)}</div></>}
+import { createClient } from "@/lib/supabase/server";
+import { ServiceForm } from "@/components/forms/service-form";
+import { ServiceCatalog } from "@/components/services/service-catalog";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card } from "@/components/ui/card";
+
+export default async function Services() {
+  const s = await createClient();
+  const { data } = await s
+    .from("services")
+    .select("id,name,category,description,default_periodicity,status")
+    .neq("status", "archived")
+    .order("name");
+
+  return (
+    <>
+      <PageHeader
+        title="Hizmetler"
+        description="Global hizmet kataloğunu yönetin."
+      />
+      <Card className="mb-6 p-5">
+        <ServiceForm />
+      </Card>
+      <ServiceCatalog services={data || []} />
+    </>
+  );
+}
