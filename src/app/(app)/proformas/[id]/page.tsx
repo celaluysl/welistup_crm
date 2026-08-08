@@ -38,13 +38,13 @@ export default async function ProformaDetail({
               Müşteri
             </div>
             <div className="mt-2 text-lg font-semibold">
-              {p.clients.company_name}
+              {p.customer_legal_name || p.customer_name || p.clients?.legal_name || p.clients?.company_name}
             </div>
             <div className="mt-1 whitespace-pre-line text-slate-500">
-              {p.clients.address}
+              {p.customer_address || p.clients?.address}
             </div>
             <div className="mt-1 text-slate-500">
-              {p.clients.tax_office} {p.clients.tax_number}
+              {p.customer_tax_office || p.clients?.tax_office} {p.customer_tax_number || p.clients?.tax_number}
             </div>
           </div>
           <dl className="grid grid-cols-2 gap-2 text-right">

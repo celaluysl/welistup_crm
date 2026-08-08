@@ -9,13 +9,14 @@ import { Field, inputClass } from "@/components/ui/field";
 import { formatMoney } from "@/lib/utils";
 
 type Item = { service_id: string; service_name: string; description: string; quantity: number; unit_price: number; discount_rate: number; vat_rate: number };
-type Values = { client_id: string; issue_date: string; valid_until: string; currency: "TRY" | "USD" | "EUR" | "GBP"; bank_details: string; description: string; payment_terms: string; items: Item[] };
+type Values = { client_mode: "existing" | "manual"; client_id: string; customer_name: string; customer_legal_name: string; customer_tax_office: string; customer_tax_number: string; customer_address: string; customer_phone: string; customer_email: string; issue_date: string; valid_until: string; currency: "TRY" | "USD" | "EUR" | "GBP"; bank_details: string; description: string; payment_terms: string; items: Item[] };
 const emptyItem: Item = { service_id: "", service_name: "", description: "", quantity: 1, unit_price: 0, discount_rate: 0, vat_rate: 20 };
 
 export function StandaloneProformaForm({ clients, services }: { clients: { id: string; company_name: string }[]; services: { id: string; name: string }[] }) {
   const [error, setError] = useState("");
+  const [clientMode, setClientMode] = useState<"existing" | "manual">("existing");
   const [pending, start] = useTransition();
-  const { register, control, handleSubmit, watch, setValue } = useForm<Values>({ defaultValues: { client_id: "", issue_date: new Date().toISOString().slice(0, 10), valid_until: "", currency: "TRY", bank_details: "", description: "", payment_terms: "", items: [{ ...emptyItem }] } });
+  const { register, control, handleSubmit, watch, setValue } = useForm<Values>({ defaultValues: { client_mode: "existing", client_id: "", customer_name: "", customer_legal_name: "", customer_tax_office: "", customer_tax_number: "", customer_address: "", customer_phone: "", customer_email: "", issue_date: new Date().toISOString().slice(0, 10), valid_until: "", currency: "TRY", bank_details: "", description: "", payment_terms: "", items: [{ ...emptyItem }] } });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   // eslint-disable-next-line react-hooks/incompatible-library
   const values = watch();
@@ -24,8 +25,26 @@ export function StandaloneProformaForm({ clients, services }: { clients: { id: s
   const isOther = (id: string) => serviceName(id).trim().toLocaleLowerCase("tr-TR") === "diğer";
 
   return <form onSubmit={handleSubmit((value) => start(async () => { setError(""); const result = await createStandaloneProforma(value); if (result?.error) setError(result.error); }))} className="space-y-6">
+    <input type="hidden" {...register("client_mode")} value={clientMode} />
+    <div className="rounded-xl border border-slate-200 p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="font-semibold">Müşteri bilgileri</h2><p className="mt-1 text-xs text-slate-500">Kayıtlı bir müşteriyi seçin veya bilgileri yalnızca bu proforma için girin.</p></div>
+        <div className="flex rounded-lg bg-slate-100 p-1">
+          <button type="button" onClick={() => setClientMode("existing")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Kayıtlı müşteri</button>
+          <button type="button" onClick={() => setClientMode("manual")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "manual" ? "bg-white text-[#CD0B16] shadow-sm" : "text-slate-500"}`}>Manuel müşteri</button>
+        </div>
+      </div>
+      {clientMode === "existing" ? <Field label="Müşteri"><select required {...register("client_id")} className={inputClass}><option value="">Müşteri seçin</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}</select></Field> : <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Müşteri / şirket adı"><input required {...register("customer_name")} className={inputClass} /></Field>
+        <Field label="Şirket unvanı"><input {...register("customer_legal_name")} className={inputClass} /></Field>
+        <Field label="Vergi dairesi"><input {...register("customer_tax_office")} className={inputClass} /></Field>
+        <Field label="Vergi numarası"><input inputMode="numeric" {...register("customer_tax_number")} className={inputClass} /></Field>
+        <Field label="Telefon"><input {...register("customer_phone")} className={inputClass} /></Field>
+        <Field label="E-posta"><input type="email" {...register("customer_email")} className={inputClass} /></Field>
+        <Field label="Adres" className="sm:col-span-2"><textarea rows={3} {...register("customer_address")} className={`${inputClass} h-auto py-2`} /></Field>
+      </div>}
+    </div>
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Müşteri"><select required {...register("client_id")} className={inputClass}><option value="">Müşteri seçin</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}</select></Field>
       <Field label="Para birimi"><select {...register("currency")} className={inputClass}>{(["TRY", "USD", "EUR", "GBP"] as const).map((currency) => <option key={currency}>{currency}</option>)}</select></Field>
       <Field label="Proforma tarihi"><input required type="date" {...register("issue_date")} className={inputClass} /></Field>
       <Field label="Geçerlilik tarihi"><input type="date" {...register("valid_until")} className={inputClass} /></Field>
