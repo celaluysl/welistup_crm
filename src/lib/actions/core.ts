@@ -171,6 +171,10 @@ function parseProjectServices(
   return { success: true, data: parsed.data };
 }
 function projectWorkflowError(message: string) {
+  if (message.includes("project_domain_service_exists"))
+    return "Bu domain için seçtiğiniz hizmete ait aktif bir proje zaten var.";
+  if (message.includes("projects_active_domain_unique"))
+    return "Bu domain için aktif bir proje zaten var. Sayfayı yenileyip tekrar deneyin.";
   if (message.includes("one_service_per_project"))
     return "Her projeye yalnızca bir hizmet ekleyebilirsiniz.";
   if (message.includes("project_already_has_service"))
