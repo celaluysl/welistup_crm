@@ -57,6 +57,7 @@ const navClass =
 
 const periodicityLabels: Record<string, string> = {
   monthly: "Aylık",
+  variable_monthly: "Değişken aylık",
   one_time: "Tek seferlik",
   periodic: "Dönemsel",
 };

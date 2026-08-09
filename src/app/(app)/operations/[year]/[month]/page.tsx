@@ -6,6 +6,7 @@ import { MonthlyPeriodForm } from "@/components/forms/monthly-period-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
+import { VariablePeriodEditor } from "@/components/operations/variable-period-editor";
 
 const invoiceLabels: Record<string, string> = {
   waiting: "Bekliyor",
@@ -49,7 +50,7 @@ export default async function MonthlyOperations({
   const { data, error } = await supabase
     .from("service_periods")
     .select(
-      "id,year,month,gross_amount,currency,invoice_status,collection_status,report_status,due_date,clients(company_name),projects(name),services(name)",
+      "id,year,month,net_amount,vat_rate,gross_amount,currency,notes,invoice_status,collection_status,report_status,due_date,clients(company_name),projects(name),services(name),project_services(periodicity)",
     )
     .eq("year", year)
     .eq("month", month)
@@ -130,6 +131,14 @@ export default async function MonthlyOperations({
                   <td className="px-4 py-4">{relation(row.services)?.name}</td>
                   <td className="px-4 py-4 font-medium">
                     {formatMoney(row.gross_amount, row.currency)}
+                    {relation(row.project_services)?.periodicity === "variable_monthly" && (
+                      <VariablePeriodEditor
+                        id={row.id}
+                        amount={Number(row.net_amount)}
+                        notes={row.notes}
+                        currency={row.currency}
+                      />
+                    )}
                   </td>
                   <td className="px-4 py-4">
                     <Badge>{invoiceLabels[row.invoice_status]}</Badge>
@@ -168,6 +177,7 @@ function relation(value: unknown) {
   return (Array.isArray(value) ? value[0] : value) as {
     company_name?: string;
     name?: string;
+    periodicity?: string;
   } | null;
 }
 function Badge({

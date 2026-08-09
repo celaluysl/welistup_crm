@@ -45,6 +45,28 @@ export async function generateYearPeriods(
   return { success: `${created} yeni aylık tahsilat kaydı oluşturuldu.` };
 }
 
+export async function updateVariableServicePeriod(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = z.object({
+    service_period_id: z.string().uuid(),
+    net_amount: z.coerce.number().min(0),
+    notes: z.string().trim().max(2000).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Aylık iş ve tutar bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_variable_service_period", {
+    p_service_period_id: parsed.data.service_period_id,
+    p_net_amount: parsed.data.net_amount,
+    p_notes: parsed.data.notes || null,
+  });
+  if (error) return { error: error.message.includes("payments_exceed_new_total") ? "Yeni tutar, daha önce tahsil edilen tutardan düşük olamaz." : error.message };
+  revalidatePath("/operations");
+  revalidatePath("/collections");
+  return { success: "Bu aya ait iş ve tutar güncellendi." };
+}
+
 export async function recordPayment(
   _: State,
   formData: FormData,

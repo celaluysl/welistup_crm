@@ -41,7 +41,7 @@ const serviceSchema = z.object({
   name: z.string().trim().min(2),
   category: z.string().trim().optional(),
   description: z.string().optional(),
-  default_periodicity: z.enum(["monthly", "one_time", "periodic"]),
+  default_periodicity: z.enum(["monthly", "variable_monthly", "one_time", "periodic"]),
 });
 export async function createService(
   _: { error?: string } | null,
@@ -118,7 +118,7 @@ export async function updateProject(
 
 const projectServiceSchema = z.object({
   service_id: z.string().uuid(),
-  periodicity: z.enum(["monthly", "one_time", "periodic"]),
+  periodicity: z.enum(["monthly", "variable_monthly", "one_time", "periodic"]),
   net_price: z.coerce.number().min(0),
   vat_rate: z.coerce.number().min(0).max(100),
   currency: z.enum(["TRY", "USD", "EUR", "GBP"]),

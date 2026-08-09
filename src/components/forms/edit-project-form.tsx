@@ -16,7 +16,7 @@ type Project = {
   project_services: {
     id: string;
     service_id: string;
-    periodicity: "monthly" | "one_time" | "periodic";
+    periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
     currency: "TRY" | "USD" | "EUR" | "GBP";
     payment_term_days: number;
     notes: string | null;
@@ -43,7 +43,7 @@ export function EditProjectForm({
   services: {
     id: string;
     name: string;
-    default_periodicity: "monthly" | "one_time" | "periodic";
+    default_periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
   }[];
   specialists: {
     id: string;

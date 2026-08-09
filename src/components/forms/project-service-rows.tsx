@@ -3,11 +3,11 @@ import { Field, inputClass } from "@/components/ui/field";
 type Service = {
   id: string;
   name: string;
-  default_periodicity: "monthly" | "one_time" | "periodic";
+  default_periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
 };
 type InitialService = {
   service_id: string;
-  periodicity: "monthly" | "one_time" | "periodic";
+  periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
   net_price: number;
   vat_rate: number;
   currency: "TRY" | "USD" | "EUR" | "GBP";
@@ -56,6 +56,7 @@ export function ProjectServiceRows({
               className={inputClass}
             >
               <option value="monthly">Aylık</option>
+              <option value="variable_monthly">Değişken aylık</option>
               <option value="one_time">Tek seferlik</option>
               <option value="periodic">Dönemsel</option>
             </select>

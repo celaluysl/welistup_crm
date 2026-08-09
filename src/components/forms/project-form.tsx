@@ -14,7 +14,7 @@ export function ProjectForm({
   services: {
     id: string;
     name: string;
-    default_periodicity: "monthly" | "one_time" | "periodic";
+    default_periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
   }[];
   specialists: {
     id: string;
