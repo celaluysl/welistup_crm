@@ -19,21 +19,41 @@ export default async function Payroll({
     year = Number(q.year) || n.getFullYear(),
     month = Number(q.month) || n.getMonth() + 1,
     s = await createClient();
-  const [{ data: rows }, { data: accounts }] = await Promise.all([
-    s
-      .from("payroll_periods")
-      .select("*,profiles(first_name,last_name),payroll_payments(amount)")
-      .eq("year", year)
-      .eq("month", month),
+  const [payrollResult, profileResult, accountResult] = await Promise.all([
+    s.from("payroll_periods").select("*").eq("year", year).eq("month", month),
+    s.from("profiles").select("id,first_name,last_name"),
     s.from("accounts").select("id,name,currency").eq("status", "active"),
   ]);
-  const payrollSummary = (rows || []).reduce(
+  const rows = payrollResult.data || [];
+  const profilesById = new Map(
+    (profileResult.data || []).map((profile) => [profile.id, profile]),
+  );
+  const paymentResult = rows.length
+    ? await s
+        .from("payroll_payments")
+        .select("payroll_period_id,amount")
+        .in(
+          "payroll_period_id",
+          rows.map((row) => row.id),
+        )
+    : { data: [], error: null };
+  const paymentsByPayroll = new Map<string, Payment[]>();
+  for (const payment of paymentResult.data || []) {
+    const current = paymentsByPayroll.get(payment.payroll_period_id) || [];
+    current.push({ amount: Number(payment.amount) });
+    paymentsByPayroll.set(payment.payroll_period_id, current);
+  }
+  const loadError =
+    payrollResult.error ||
+    profileResult.error ||
+    accountResult.error ||
+    paymentResult.error;
+  const payrollSummary = rows.reduce(
     (summary, row) => {
-      const paid =
-        (row.payroll_payments as Payment[] | null)?.reduce(
-          (total, payment) => total + Number(payment.amount),
-          0,
-        ) || 0;
+      const paid = (paymentsByPayroll.get(row.id) || []).reduce(
+        (total, payment) => total + Number(payment.amount),
+        0,
+      );
       return {
         total: summary.total + Number(row.net_payable),
         paid: summary.paid + paid,
@@ -105,13 +125,12 @@ export default async function Payroll({
       </Card>
       <div>
         <div className="space-y-4">
-          {rows?.map((r) => {
-            const p = one(r.profiles),
-              paid =
-                (r.payroll_payments as Payment[] | null)?.reduce(
-                  (a, x) => a + Number(x.amount),
-                  0,
-                ) || 0,
+          {rows.map((r) => {
+            const p = profilesById.get(r.profile_id),
+              paid = (paymentsByPayroll.get(r.id) || []).reduce(
+                (a, x) => a + Number(x.amount),
+                0,
+              ),
               remaining = Math.max(0, Number(r.net_payable) - paid);
             return (
               <Card key={r.id} className="p-5">
@@ -132,13 +151,18 @@ export default async function Payroll({
                   <PayrollPaymentForm
                     payrollId={r.id}
                     remaining={remaining}
-                    accounts={accounts || []}
+                    accounts={accountResult.data || []}
                   />
                 )}
               </Card>
             );
           })}
-          {!rows?.length && (
+          {loadError && (
+            <Card className="border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
+              Maaş kayıtları yüklenemedi: {loadError.message}
+            </Card>
+          )}
+          {!loadError && !rows.length && (
             <Card className="p-8 text-center text-sm text-slate-400">
               Bu dönem için maaş kaydı yok.
             </Card>
@@ -147,10 +171,4 @@ export default async function Payroll({
       </div>
     </>
   );
-}
-function one(v: unknown) {
-  return (Array.isArray(v) ? v[0] : v) as {
-    first_name?: string;
-    last_name?: string;
-  } | null;
 }
