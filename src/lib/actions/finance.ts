@@ -28,6 +28,23 @@ export async function generateMonthlyPeriods(
   return { success: `${data ?? 0} yeni hizmet dönemi oluşturuldu.` };
 }
 
+export async function generateYearPeriods(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = z.coerce.number().int().min(2000).max(2200).safeParse(formData.get("year"));
+  if (!parsed.success) return { error: "Yıl bilgisini kontrol edin." };
+  const supabase = await createClient();
+  let created = 0;
+  for (let month = 1; month <= 12; month += 1) {
+    const { data, error } = await supabase.rpc("generate_service_periods", { p_year: parsed.data, p_month: month });
+    if (error) return { error: error.message };
+    created += Number(data || 0);
+  }
+  revalidatePath("/collections");
+  return { success: `${created} yeni aylık tahsilat kaydı oluşturuldu.` };
+}
+
 export async function recordPayment(
   _: State,
   formData: FormData,

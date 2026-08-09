@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { addCollectionActivity, recordPayment } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -8,12 +8,15 @@ export function PaymentForm({
   receivableId,
   maxAmount,
   accounts,
+  onSuccess,
 }: {
   receivableId: string;
   maxAmount: number;
   accounts: { id: string; name: string; currency: string }[];
+  onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState(recordPayment, null);
+  useEffect(() => { if (state?.success) onSuccess?.(); }, [state?.success, onSuccess]);
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
       <input type="hidden" name="receivable_id" value={receivableId} />
