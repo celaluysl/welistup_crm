@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { InvoiceTrackingForm } from "@/components/forms/invoice-tracking-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
-import { formatMoney } from "@/lib/utils";
+import { InvoiceWorkspace, InvoiceWorkspaceRow } from "@/components/invoices/invoice-workspace";
 const labels: Record<string, string> = {
   waiting: "Fatura bekliyor",
   issued: "Fatura kesildi",
@@ -74,35 +73,7 @@ export default async function Invoices({
           </button>
         </form>
       </Card>
-      <div className="grid gap-4 xl:grid-cols-2">
-        {data?.map((r) => {
-          const invoice = one(r.invoices);
-          return (
-            <Card key={r.id} className="p-5">
-              <div className="flex justify-between gap-4">
-                <div>
-                  <b>{one(r.clients)?.company_name}</b>
-                  <div className="mt-1 text-sm text-slate-500">
-                    {one(r.projects)?.name} · {one(r.services)?.name} · {month}/
-                    {year}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <b>{formatMoney(r.gross_amount, r.currency)}</b>
-                  <div className="mt-1 text-xs text-[#CD0B16]">
-                    {labels[r.invoice_status]}
-                  </div>
-                </div>
-              </div>
-              <InvoiceTrackingForm
-                periodId={r.id}
-                invoice={invoice}
-                defaultDueDate={r.due_date}
-              />
-            </Card>
-          );
-        })}
-      </div>
+      <InvoiceWorkspace rows={(data || []).map((r): InvoiceWorkspaceRow => ({ id: r.id, client: one(r.clients)?.company_name || "—", project: one(r.projects)?.name || "—", service: one(r.services)?.name || "Hizmet", year: r.year, month: r.month, amount: Number(r.gross_amount), currency: r.currency, dueDate: r.due_date, status: r.invoice_status, invoice: one(r.invoices) }))}/>
       {(!data?.length || error) && (
         <Card className="p-10 text-center text-sm text-slate-500">
           {error
