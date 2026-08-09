@@ -41,7 +41,12 @@ const serviceSchema = z.object({
   name: z.string().trim().min(2),
   category: z.string().trim().optional(),
   description: z.string().optional(),
-  default_periodicity: z.enum(["monthly", "variable_monthly", "one_time", "periodic"]),
+  default_periodicity: z.enum([
+    "monthly",
+    "variable_monthly",
+    "one_time",
+    "periodic",
+  ]),
 });
 export async function createService(
   _: { error?: string } | null,
@@ -207,6 +212,8 @@ const profileSchema = z.object({
     "other",
   ]),
   status: z.enum(["active", "inactive", "archived"]),
+  base_salary: z.coerce.number().min(0),
+  salary_currency: z.enum(["TRY", "USD", "EUR", "GBP"]),
 });
 export async function updateProfileAccess(
   _: { error?: string; success?: string } | null,
@@ -222,6 +229,8 @@ export async function updateProfileAccess(
       role_id: p.data.role_id,
       employment_type: p.data.employment_type,
       status: p.data.status,
+      base_salary: p.data.base_salary,
+      salary_currency: p.data.salary_currency,
     })
     .eq("id", p.data.profile_id);
   if (error)
@@ -229,8 +238,17 @@ export async function updateProfileAccess(
       error:
         error.code === "42501" ? "Bu işlem için yetkiniz yok." : error.message,
     };
+  if (["partner", "employee"].includes(p.data.employment_type)) {
+    const now = new Date();
+    const { error: payrollError } = await s.rpc("generate_payroll_periods", {
+      p_year: now.getFullYear(),
+      p_month: now.getMonth() + 1,
+    });
+    if (payrollError) return { error: payrollError.message };
+  }
   revalidatePath("/team");
-  return { success: "Kullanıcı erişimi güncellendi." };
+  revalidatePath("/payroll");
+  return { success: "Profil ve maaş bilgileri güncellendi." };
 }
 const serviceUpdateSchema = serviceSchema.extend({
   id: z.string().uuid(),

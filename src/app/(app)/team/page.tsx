@@ -10,7 +10,7 @@ export default async function Team() {
       s
         .from("profiles")
         .select(
-          "id,first_name,last_name,email,phone,role_id,employment_type,status",
+          "id,first_name,last_name,email,phone,role_id,employment_type,status,base_salary,salary_currency",
         )
         .order("first_name"),
       s.from("roles").select("id,name").order("name"),
@@ -53,6 +53,8 @@ export default async function Team() {
                 roleId={p.role_id}
                 employmentType={p.employment_type}
                 status={p.status}
+                baseSalary={Number(p.base_salary || 0)}
+                salaryCurrency={p.salary_currency || "TRY"}
                 roles={roles || []}
               />
             </div>
