@@ -19,16 +19,22 @@ export async function createSalaryConfig(
     .safeParse(Object.fromEntries(fd));
   if (!p.success) return { error: "Maaş bilgilerini kontrol edin." };
   const s = await createClient();
-  const {
-    data: { user },
-  } = await s.auth.getUser();
-  if (!user) return { error: "Oturum bulunamadı." };
-  const { error } = await s
-    .from("salary_configs")
-    .insert({ ...p.data, created_by: user.id });
+  const { error } = await s.rpc("set_salary_config", {
+    p_profile_id: p.data.profile_id,
+    p_base_salary: p.data.base_salary,
+    p_currency: p.data.currency,
+    p_effective_from: p.data.effective_from,
+    p_notes: p.data.notes || null,
+  });
   if (error) return { error: error.message };
+  const effectiveDate = new Date(`${p.data.effective_from}T00:00:00`);
+  const { error: generationError } = await s.rpc("generate_payroll_periods", {
+    p_year: effectiveDate.getFullYear(),
+    p_month: effectiveDate.getMonth() + 1,
+  });
+  if (generationError) return { error: generationError.message };
   revalidatePath("/payroll");
-  return { success: "Maaş geçmişine yeni dönem eklendi." };
+  return { success: "Sabit maaş tanımlandı ve aylık maaş kaydı oluşturuldu." };
 }
 export async function generatePayroll(_: State, fd: FormData): Promise<State> {
   const p = z

@@ -28,7 +28,7 @@ export default async function Payroll({
         .eq("month", month),
       s
         .from("profiles")
-        .select("id,first_name,last_name")
+        .select("id,first_name,last_name,employment_type")
         .eq("status", "active")
         .in("employment_type", ["employee", "partner"]),
       s.from("accounts").select("id,name,currency").eq("status", "active"),
@@ -36,7 +36,12 @@ export default async function Payroll({
   const people = (profiles || []).map((p) => ({
     id: p.id,
     name: `${p.first_name} ${p.last_name}`.trim(),
+    employmentType: p.employment_type as "employee" | "partner",
   }));
+  const payrollSummary = (rows || []).reduce((summary, row) => {
+    const paid = (row.payroll_payments as Payment[] | null)?.reduce((total, payment) => total + Number(payment.amount), 0) || 0;
+    return { total: summary.total + Number(row.net_payable), paid: summary.paid + paid };
+  }, { total: 0, paid: 0 });
   return (
     <>
       <PageHeader
@@ -67,6 +72,7 @@ export default async function Payroll({
           <GeneratePayrollForm year={year} month={month} />
         </div>
       </Card>
+      <div className="mb-6 grid gap-4 sm:grid-cols-3"><Card className="p-5"><div className="text-sm text-slate-500">Toplam maaş</div><div className="mt-2 text-xl font-bold">{formatMoney(payrollSummary.total,"TRY")}</div></Card><Card className="p-5"><div className="text-sm text-slate-500">Ödenen</div><div className="mt-2 text-xl font-bold text-emerald-700">{formatMoney(payrollSummary.paid,"TRY")}</div></Card><Card className="p-5"><div className="text-sm text-slate-500">Kalan</div><div className="mt-2 text-xl font-bold text-[#CD0B16]">{formatMoney(Math.max(0,payrollSummary.total-payrollSummary.paid),"TRY")}</div></Card></div>
       <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <div className="space-y-4">
           {rows?.map((r) => {
@@ -109,8 +115,9 @@ export default async function Payroll({
           )}
         </div>
         <Card className="h-fit p-6">
-          <h2 className="mb-5 font-semibold">Maaş geçmişine ekle</h2>
-          <SalaryConfigForm profiles={people} />
+          <h2 className="font-semibold">Aylık sabit maaş tanımla</h2>
+          <p className="mb-5 mt-1 text-xs text-slate-500">Ortak maaşı kâr payından ayrıdır. Buraya yalnızca gider olarak işlenecek sabit maaşı girin.</p>
+          <SalaryConfigForm profiles={people} year={year} month={month} />
         </Card>
       </div>
     </>

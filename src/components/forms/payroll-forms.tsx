@@ -8,8 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 type Account = { id: string; name: string; currency: string };
-type Profile = { id: string; name: string };
-export function SalaryConfigForm({ profiles }: { profiles: Profile[] }) {
+type Profile = { id: string; name: string; employmentType: "employee" | "partner" };
+export function SalaryConfigForm({ profiles, year, month }: { profiles: Profile[]; year: number; month: number }) {
   const [state, action, pending] = useActionState(createSalaryConfig, null);
   return (
     <form action={action} className="grid gap-3 sm:grid-cols-2">
@@ -18,7 +18,7 @@ export function SalaryConfigForm({ profiles }: { profiles: Profile[] }) {
           <option value="">Seçin</option>
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}
+              {p.name} · {p.employmentType === "partner" ? "Ortak" : "Çalışan"}
             </option>
           ))}
         </select>
@@ -45,12 +45,14 @@ export function SalaryConfigForm({ profiles }: { profiles: Profile[] }) {
           name="effective_from"
           type="date"
           required
+          defaultValue={`${year}-${String(month).padStart(2, "0")}-01`}
           className={inputClass}
         />
       </Field>
+      <Field label="Not" className="sm:col-span-2"><input name="notes" placeholder="Maaş değişikliği veya açıklama" className={inputClass}/></Field>
       <Result state={state} />
       <div className="sm:col-span-2">
-        <Button disabled={pending}>Maaş dönemini ekle</Button>
+        <Button disabled={pending}>{pending ? "Kaydediliyor…" : "Sabit maaşı tanımla"}</Button>
       </div>
     </form>
   );
