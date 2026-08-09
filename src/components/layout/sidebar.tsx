@@ -107,7 +107,7 @@ export async function Sidebar() {
               <>
                 <Link href="/operations" className={linkClass}>
                   <ReceiptText size={18} />
-                  Aylık Operasyon
+                  Ödeme Kontrolü
                 </Link>
                 <Link href="/invoices" className={linkClass}>
                   <FileSignature size={18} />

@@ -62,8 +62,8 @@ export default async function MonthlyOperations({
   return (
     <>
       <PageHeader
-        title={`Aylık Operasyon · ${title}`}
-        description="Aktif aylık hizmetleri, faturalama, tahsilat ve rapor durumuyla tek ekranda takip edin."
+        title={`Ödeme Kontrolü · ${title}`}
+        description="Bulunduğunuz ayın müşteri ödemelerini, faturalama ve tahsilat durumlarıyla kontrol edin."
       />
       <Card className="mb-6 p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -164,7 +164,7 @@ export default async function MonthlyOperations({
         {(!data?.length || error) && (
           <div className="p-10 text-center text-sm text-slate-500">
             {error
-              ? "Aylık operasyon kayıtları yüklenemedi."
+              ? "Ödeme kontrolü kayıtları yüklenemedi."
               : "Bu dönem için kayıt yok. Aylık kayıtları oluşturabilirsiniz."}
           </div>
         )}
