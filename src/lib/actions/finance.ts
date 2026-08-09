@@ -109,6 +109,30 @@ export async function updatePayment(
   return { success: "Ödeme güncellendi." };
 }
 
+export async function classifyUnallocatedReceipt(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = z.object({
+    receipt_id: z.string().uuid(),
+    service_id: z.string().uuid().optional().or(z.literal("")),
+    custom_service_name: z.string().trim().max(200).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  }).refine((value) => value.service_id || value.custom_service_name, { message: "Hizmet seçin veya tek seferlik hizmet adını yazın." }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Eşleştirme bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("classify_unallocated_customer_receipt", {
+    p_receipt_id: parsed.data.receipt_id,
+    p_service_id: parsed.data.service_id || null,
+    p_custom_service_name: parsed.data.custom_service_name || null,
+    p_notes: parsed.data.notes || null,
+  });
+  if (error) return { error: error.message.includes("receipt_already_classified") ? "Bu tahsilat daha önce eşleştirilmiş." : error.message };
+  revalidatePath("/collections");
+  revalidatePath("/transactions");
+  return { success: "Fazla tahsilat hizmetle eşleştirildi." };
+}
+
 export async function addCollectionActivity(
   _: State,
   formData: FormData,

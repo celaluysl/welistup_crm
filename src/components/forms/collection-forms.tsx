@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, recordPayment, updatePayment } from "@/lib/actions/finance";
+import { addCollectionActivity, classifyUnallocatedReceipt, recordPayment, updatePayment } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -126,6 +126,20 @@ export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCan
     <Field label="Not"><input name="notes" defaultValue={payment.notes || ""} className={inputClass} /></Field>
     <Result state={state} />
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Ödemeyi güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
+  </form>;
+}
+
+export function ReceiptClassificationForm({ receiptId, services, onSuccess, onCancel }: { receiptId: string; services: { id: string; name: string }[]; onSuccess: () => void; onCancel: () => void }) {
+  const [state, action, pending] = useActionState(classifyUnallocatedReceipt, null);
+  const [serviceId, setServiceId] = useState("");
+  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
+  return <form action={action} className="grid gap-4 sm:grid-cols-2">
+    <input type="hidden" name="receipt_id" value={receiptId}/>
+    <Field label="Hizmet"><select name="service_id" value={serviceId} onChange={(event) => setServiceId(event.target.value)} className={inputClass}><option value="">Tek seferlik / katalog dışı</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></Field>
+    <Field label="Tek seferlik hizmet adı"><input name="custom_service_name" disabled={!!serviceId} required={!serviceId} placeholder="Örn. Landing page düzenlemesi" className={`${inputClass} disabled:bg-slate-100`}/></Field>
+    <Field label="Eşleştirme notu" className="sm:col-span-2"><input name="notes" placeholder="Satışın kapsamı veya açıklaması" className={inputClass}/></Field>
+    <Result state={state}/>
+    <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Eşleştiriliyor…" : "Hizmetle eşleştir"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
   </form>;
 }
 
