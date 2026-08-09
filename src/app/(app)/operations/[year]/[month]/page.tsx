@@ -122,7 +122,7 @@ export default async function MonthlyOperations({
             </thead>
             <tbody className="divide-y">
               {data?.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50">
+                <tr key={row.id} className={`transition-colors ${row.collection_status === "paid" ? "bg-emerald-50/60 hover:bg-emerald-50" : row.collection_status === "partial" ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-slate-50"}`}>
                   <td className="px-4 py-4 font-semibold">
                     {relation(row.clients)?.company_name}
                   </td>
@@ -135,7 +135,7 @@ export default async function MonthlyOperations({
                     <Badge>{invoiceLabels[row.invoice_status]}</Badge>
                   </td>
                   <td className="px-4 py-4">
-                    <Badge danger={row.collection_status !== "paid"}>
+                    <Badge tone={row.collection_status === "paid" ? "success" : row.collection_status === "partial" ? "warning" : row.collection_status === "overdue" ? "danger" : "danger"}>
                       <Link href="/collections">
                         {collectionLabels[row.collection_status]}
                       </Link>
@@ -172,11 +172,17 @@ function relation(value: unknown) {
 }
 function Badge({
   children,
-  danger = false,
-}: React.PropsWithChildren<{ danger?: boolean }>) {
+  tone = "neutral",
+}: React.PropsWithChildren<{ tone?: "neutral" | "success" | "warning" | "danger" }>) {
+  const tones = {
+    neutral: "bg-slate-100 text-slate-700",
+    success: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+    warning: "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+    danger: "bg-red-50 text-[#CD0B16] ring-1 ring-red-100",
+  };
   return (
     <span
-      className={`rounded-full px-2 py-1 text-xs ${danger ? "bg-red-50 text-[#CD0B16]" : "bg-slate-100 text-slate-700"}`}
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}
     >
       {children}
     </span>
