@@ -80,6 +80,31 @@ export async function recordPayment(
   return { success: "Ödeme kaydedildi." };
 }
 
+export async function updatePayment(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = z.object({
+    payment_id: z.string().uuid(),
+    account_id: z.string().uuid(),
+    amount: z.coerce.number().positive(),
+    payment_date: z.string().date(),
+    notes: z.string().trim().max(1000).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Ödeme bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_receivable_payment", {
+    p_payment_id: parsed.data.payment_id,
+    p_account_id: parsed.data.account_id,
+    p_amount: parsed.data.amount,
+    p_payment_date: parsed.data.payment_date,
+    p_notes: parsed.data.notes || null,
+  });
+  if (error) return { error: error.message.includes("invalid_payment_amount") ? "Tutar toplam alacağı aşamaz." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi ödeme ile aynı olmalı." : error.message };
+  revalidatePath("/collections");
+  return { success: "Ödeme güncellendi." };
+}
+
 export async function addCollectionActivity(
   _: State,
   formData: FormData,
