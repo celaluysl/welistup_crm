@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { addCollectionActivity, recordPayment, updatePayment } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -16,6 +16,9 @@ export function PaymentForm({
   onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState(recordPayment, null);
+  const [amount, setAmount] = useState("");
+  const numericAmount = Number(amount || 0);
+  const excessAmount = Math.max(0, numericAmount - maxAmount);
   useEffect(() => { if (state?.success) onSuccess?.(); }, [state?.success, onSuccess]);
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
@@ -25,9 +28,10 @@ export function PaymentForm({
           name="amount"
           type="number"
           min="0.01"
-          max={maxAmount}
           step="0.01"
           required
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
           className={inputClass}
         />
       </Field>
@@ -53,10 +57,15 @@ export function PaymentForm({
       <Field label="Not">
         <input name="notes" className={inputClass} />
       </Field>
+      {excessAmount > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:col-span-2">
+        <b>{excessAmount.toLocaleString("tr-TR", { style: "currency", currency: accounts[0]?.currency || "TRY" })} fazla ödeme var.</b>
+        <p className="mt-1 text-xs text-amber-700">Kalan alacak kapatılacak; fazla tutar, hizmeti henüz belirlenmemiş müşteri bakiyesi olarak kasaya kaydedilecek.</p>
+        <label className="mt-3 flex items-start gap-2 font-medium"><input type="checkbox" name="allow_excess" value="true" required className="mt-0.5"/>Fazla tahsilatı açıklanamayan müşteri bakiyesi olarak kaydet</label>
+      </div>}
       <Result state={state} />
       <div className="sm:col-span-2">
         <Button disabled={pending}>
-          {pending ? "Kaydediliyor…" : "Parçalı ödeme kaydet"}
+          {pending ? "Kaydediliyor…" : excessAmount > 0 ? "Ödemeyi ve fazla bakiyeyi kaydet" : "Parçalı ödeme kaydet"}
         </Button>
       </div>
     </form>

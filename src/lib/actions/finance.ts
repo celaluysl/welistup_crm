@@ -56,21 +56,25 @@ export async function recordPayment(
       amount: z.coerce.number().positive(),
       payment_date: z.string().date(),
       notes: z.string().trim().max(1000).optional(),
+      allow_excess: z.string().optional(),
     })
     .safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "Ödeme bilgilerini kontrol edin." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("record_receivable_payment_to_account", {
+  const { error } = await supabase.rpc("record_receivable_payment_with_excess", {
     p_receivable_id: parsed.data.receivable_id,
     p_account_id: parsed.data.account_id,
     p_amount: parsed.data.amount,
     p_payment_date: parsed.data.payment_date,
     p_notes: parsed.data.notes || null,
+    p_allow_excess: parsed.data.allow_excess === "true",
   });
   if (error)
     return {
       error: error.message.includes("invalid_payment_amount")
-        ? "Tutar kalan bakiyeden büyük olamaz."
+        ? "Ödeme tutarını kontrol edin."
+        : error.message.includes("excess_payment_confirmation_required")
+          ? "Fazla tahsilatı müşteri bakiyesi olarak kaydetmeyi onaylayın."
         : error.message.includes("currency_mismatch")
           ? "Seçilen kasanın para birimi alacak ile aynı olmalı."
           : error.message,
