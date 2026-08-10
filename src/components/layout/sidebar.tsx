@@ -109,10 +109,6 @@ export async function Sidebar() {
                   <ReceiptText size={18} />
                   Ödeme Kontrolü
                 </Link>
-                <Link href="/invoices" className={linkClass}>
-                  <FileSignature size={18} />
-                  Faturalar
-                </Link>
                 <Link href="/financial-reports" className={linkClass}>
                   <BarChart3 size={18} />
                   Finansal Raporlar
