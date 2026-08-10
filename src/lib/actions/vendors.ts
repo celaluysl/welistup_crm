@@ -155,6 +155,7 @@ export async function updateVendorAccrualAmount(
         : error.message,
     };
   revalidatePath("/vendor-payments");
+  revalidatePath("/expenses");
   return { success: "Aylık hakediş onaylandı." };
 }
 export async function generateVendorAccruals(
@@ -175,6 +176,7 @@ export async function generateVendorAccruals(
   });
   if (error) return { error: error.message };
   revalidatePath("/vendor-payments");
+  revalidatePath("/expenses");
   return { success: `${data ?? 0} hakediş oluşturuldu.` };
 }
 
@@ -210,6 +212,7 @@ export async function payVendorAccrual(_: State, fd: FormData): Promise<State> {
               : error.message,
     };
   revalidatePath("/vendor-payments");
+  revalidatePath("/expenses");
   revalidatePath("/accounts");
   revalidatePath("/transactions");
   return { success: "Tedarikçi ödemesi ve kasa hareketi kaydedildi." };

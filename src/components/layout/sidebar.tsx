@@ -13,6 +13,7 @@ import {
   Landmark,
   CalendarCheck,
   ReceiptText,
+  CircleDollarSign,
   Settings,
   Shapes,
   Store,
@@ -113,6 +114,10 @@ export async function Sidebar() {
                 <Link href="/financial-reports" className={linkClass}>
                   <BarChart3 size={18} />
                   Finansal Raporlar
+                </Link>
+                <Link href="/expenses" className={linkClass}>
+                  <CircleDollarSign size={18} />
+                  Gider Kontrolü
                 </Link>
               </>
             )}
