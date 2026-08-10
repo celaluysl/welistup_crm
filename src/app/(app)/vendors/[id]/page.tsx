@@ -113,12 +113,7 @@ export default async function VendorDetail({
           {vendor.email || "—"} · {vendor.phone || "—"}
         </p>
       </div>
-      <VendorAssignmentsWorkspace
-        vendorId={id}
-        assignments={assignments}
-        services={services}
-      />
-      <div className="mb-4 mt-8 flex flex-wrap items-end justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">Yıllık hakediş ve ödeme takibi</h2>
           <p className="mt-1 text-sm text-slate-500">
@@ -144,6 +139,26 @@ export default async function VendorDetail({
         </div>
       </div>
       <VendorYearWorkspace rows={periods} year={year} />
+      <details className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 font-semibold text-slate-800 hover:bg-slate-50">
+          <span>
+            Proje anlaşmaları{" "}
+            <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
+              {assignments.length}
+            </span>
+          </span>
+          <span className="text-xs font-normal text-slate-500">
+            Yeni atama ve düzenleme için açın
+          </span>
+        </summary>
+        <div className="border-t bg-slate-50 p-3">
+          <VendorAssignmentsWorkspace
+            vendorId={id}
+            assignments={assignments}
+            services={services}
+          />
+        </div>
+      </details>
     </>
   );
 }
