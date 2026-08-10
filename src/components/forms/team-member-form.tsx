@@ -1,15 +1,20 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { createTeamMember } from "@/lib/actions/team";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
 export function TeamMemberForm({
   roles,
+  onSuccess,
 }: {
   roles: { id: string; name: string }[];
+  onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState(createTeamMember, null);
+  useEffect(() => {
+    if (state?.success) onSuccess?.();
+  }, [state?.success, onSuccess]);
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <Field label="Ad">

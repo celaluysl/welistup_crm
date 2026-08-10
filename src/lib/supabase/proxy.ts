@@ -20,6 +20,23 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
   if (!user && !isAuthRoute) return NextResponse.redirect(new URL("/login", request.url));
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profile && profile.status !== "active") {
+      await supabase.auth.signOut();
+      const redirect = NextResponse.redirect(
+        new URL("/login?account=inactive", request.url),
+      );
+      response.cookies
+        .getAll()
+        .forEach((cookie) => redirect.cookies.set(cookie.name, cookie.value));
+      return redirect;
+    }
+  }
   if (user && isAuthRoute) return NextResponse.redirect(new URL("/dashboard", request.url));
   return response;
 }

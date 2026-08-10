@@ -87,3 +87,33 @@ export async function createTeamMember(
       "Ekip arkadaşı oluşturuldu. Geçici parolayı kullanıcıyla güvenli şekilde paylaşın.",
   };
 }
+
+const passwordSchema = z.object({
+  profile_id: z.string().uuid(),
+  new_password: z.string().min(8, "Yeni parola en az 8 karakter olmalı."),
+  confirm_password: z.string(),
+});
+
+export async function resetTeamMemberPassword(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = passwordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  if (parsed.data.new_password !== parsed.data.confirm_password)
+    return { error: "Parolalar birbiriyle eşleşmiyor." };
+
+  const client = await createClient();
+  const { error } = await client.rpc("admin_reset_user_password", {
+    p_user_id: parsed.data.profile_id,
+    p_new_password: parsed.data.new_password,
+  });
+  if (error)
+    return {
+      error:
+        error.code === "42501"
+          ? "Bu işlem için ekip yönetim yetkiniz yok."
+          : error.message,
+    };
+  return { success: "Parola yenilendi. Yeni parolayı kullanıcıyla güvenli şekilde paylaşın." };
+}

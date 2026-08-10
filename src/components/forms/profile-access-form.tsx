@@ -1,35 +1,49 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { updateProfileAccess } from "@/lib/actions/core";
 import { Button } from "@/components/ui/button";
-import { inputClass } from "@/components/ui/field";
+import { Field, inputClass } from "@/components/ui/field";
 
 export function ProfileAccessForm({
   profileId,
+  firstName,
+  lastName,
+  email,
+  phone,
   roleId,
   employmentType,
   status,
   baseSalary,
   salaryCurrency,
   roles,
+  onSuccess,
 }: {
   profileId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
   roleId: string | null;
   employmentType: string;
   status: string;
   baseSalary: number;
   salaryCurrency: string;
   roles: { id: string; name: string }[];
+  onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState(updateProfileAccess, null);
+  useEffect(() => {
+    if (state?.success) onSuccess?.();
+  }, [state?.success, onSuccess]);
   return (
-    <form
-      action={action}
-      className="grid gap-2 md:grid-cols-2 xl:grid-cols-[160px_160px_140px_140px_110px_auto]"
-    >
+    <form action={action} className="grid gap-4 sm:grid-cols-2">
       <input type="hidden" name="profile_id" value={profileId} />
-      <select
+      <Field label="Ad"><input name="first_name" defaultValue={firstName} required className={inputClass} /></Field>
+      <Field label="Soyad"><input name="last_name" defaultValue={lastName} required className={inputClass} /></Field>
+      <Field label="E-posta"><input value={email} disabled className={`${inputClass} bg-slate-50`} /></Field>
+      <Field label="Telefon"><input name="phone" defaultValue={phone || ""} className={inputClass} /></Field>
+      <Field label="Rol"><select
         aria-label="Rol"
         name="role_id"
         defaultValue={roleId || ""}
@@ -42,8 +56,8 @@ export function ProfileAccessForm({
             {r.name}
           </option>
         ))}
-      </select>
-      <select
+      </select></Field>
+      <Field label="Çalışma tipi"><select
         aria-label="Çalışma tipi"
         name="employment_type"
         defaultValue={employmentType}
@@ -54,8 +68,8 @@ export function ProfileAccessForm({
         <option value="freelancer">Freelancer</option>
         <option value="outsourced">Dış kaynak</option>
         <option value="other">Diğer</option>
-      </select>
-      <select
+      </select></Field>
+      <Field label="Erişim durumu"><select
         aria-label="Durum"
         name="status"
         defaultValue={status}
@@ -64,8 +78,8 @@ export function ProfileAccessForm({
         <option value="active">Aktif</option>
         <option value="inactive">Pasif</option>
         <option value="archived">Arşiv</option>
-      </select>
-      <input
+      </select></Field>
+      <Field label="Aylık maaş"><input
         aria-label="Aylık maaş"
         title="Aylık maaş"
         name="base_salary"
@@ -75,8 +89,8 @@ export function ProfileAccessForm({
         defaultValue={baseSalary}
         placeholder="Aylık maaş"
         className={inputClass}
-      />
-      <select
+      /></Field>
+      <Field label="Maaş para birimi"><select
         aria-label="Maaş para birimi"
         name="salary_currency"
         defaultValue={salaryCurrency}
@@ -85,17 +99,15 @@ export function ProfileAccessForm({
         {["TRY", "USD", "EUR", "GBP"].map((currency) => (
           <option key={currency}>{currency}</option>
         ))}
-      </select>
-      <Button variant="secondary" disabled={pending}>
-        Güncelle
-      </Button>
+      </select></Field>
       {(state?.error || state?.success) && (
         <p
-          className={`text-xs md:col-span-2 xl:col-span-6 ${state.error ? "text-red-600" : "text-emerald-600"}`}
+          className={`text-sm sm:col-span-2 ${state.error ? "text-red-600" : "text-emerald-600"}`}
         >
           {state.error || state.success}
         </p>
       )}
+      <div className="flex justify-end sm:col-span-2"><Button disabled={pending}>{pending ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</Button></div>
     </form>
   );
 }

@@ -212,6 +212,9 @@ function normalizeProjectVat(
 
 const profileSchema = z.object({
   profile_id: z.string().uuid(),
+  first_name: z.string().trim().min(2),
+  last_name: z.string().trim().min(2),
+  phone: z.string().trim().optional(),
   role_id: z.string().uuid(),
   employment_type: z.enum([
     "partner",
@@ -232,9 +235,17 @@ export async function updateProfileAccess(
   if (!p.success)
     return { error: "Rol ve çalışma tipi bilgilerini kontrol edin." };
   const s = await createClient();
+  const {
+    data: { user },
+  } = await s.auth.getUser();
+  if (user?.id === p.data.profile_id && p.data.status !== "active")
+    return { error: "Kendi hesabınızı pasife alamazsınız." };
   const { error } = await s
     .from("profiles")
     .update({
+      first_name: p.data.first_name,
+      last_name: p.data.last_name,
+      phone: p.data.phone || null,
       role_id: p.data.role_id,
       employment_type: p.data.employment_type,
       status: p.data.status,
