@@ -70,31 +70,40 @@ export function AccountsWorkspace({ accounts }: { accounts: AccountRow[] }) {
         </Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {accounts.map((account) => (
-          <Card key={account.id} className="group relative p-5">
-            <button
-              type="button"
-              onClick={() => setEditing(account)}
-              aria-label="Kasayı düzenle"
-              className="absolute right-3 top-3 rounded-lg border p-2 text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-[#CD0B16]"
+        {accounts.map((account) => {
+          const tone = accountTone(account);
+          return (
+            <Card
+              key={account.id}
+              className={`group relative overflow-hidden border-2 p-5 ${tone.card}`}
             >
-              <Pencil size={15} />
-            </button>
-            <div className="text-xs text-slate-500">
-              {labels[account.account_type]}
-              {account.account_type !== "cash" &&
-                ` · ${account.billing_preference === "invoiced" ? "Resmi" : "Faturasız"}`}
-            </div>
-            <h2 className="mt-1 pr-8 font-semibold">{account.name}</h2>
-            <div className="mt-4 text-xl font-bold">
-              {formatMoney(account.balance, account.currency)}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              Sabit başlangıç:{" "}
-              {formatMoney(account.opening_balance, account.currency)}
-            </div>
-          </Card>
-        ))}
+              <div className={`absolute inset-x-0 top-0 h-1 ${tone.bar}`} />
+              <button
+                type="button"
+                onClick={() => setEditing(account)}
+                aria-label="Kasayı düzenle"
+                className={`absolute right-3 top-3 rounded-lg border bg-white/80 p-2 opacity-0 shadow-sm transition group-hover:opacity-100 ${tone.edit}`}
+              >
+                <Pencil size={15} />
+              </button>
+              <div className={`text-xs font-medium ${tone.muted}`}>
+                {labels[account.account_type]}
+                {account.account_type !== "cash" &&
+                  ` · ${account.billing_preference === "invoiced" ? "Resmi" : "Faturasız"}`}
+              </div>
+              <h2 className={`mt-1 pr-8 font-semibold ${tone.title}`}>
+                {account.name}
+              </h2>
+              <div className={`mt-4 text-xl font-bold ${tone.amount}`}>
+                {formatMoney(account.balance, account.currency)}
+              </div>
+              <div className={`mt-1 text-xs ${tone.muted}`}>
+                Sabit başlangıç:{" "}
+                {formatMoney(account.opening_balance, account.currency)}
+              </div>
+            </Card>
+          );
+        })}
       </div>
       {dialog === "create" && (
         <Modal title="Yeni kasa" onClose={close}>
@@ -135,6 +144,38 @@ export function AccountsWorkspace({ accounts }: { accounts: AccountRow[] }) {
       )}
     </>
   );
+}
+
+function accountTone(account: AccountRow) {
+  const name = account.name.toLocaleLowerCase("tr-TR");
+  if (name.includes("gider")) {
+    return {
+      card: "border-blue-200 bg-gradient-to-br from-blue-50 to-sky-100/70",
+      bar: "bg-blue-500",
+      muted: "text-blue-600/75",
+      title: "text-blue-950",
+      amount: "text-blue-900",
+      edit: "border-blue-200 text-blue-600 hover:bg-blue-100",
+    };
+  }
+  if (account.account_type === "cash" || name.includes("tahsilat")) {
+    return {
+      card: "border-orange-200 bg-gradient-to-br from-orange-50 to-amber-100/70",
+      bar: "bg-orange-500",
+      muted: "text-orange-700/75",
+      title: "text-orange-950",
+      amount: "text-orange-900",
+      edit: "border-orange-200 text-orange-600 hover:bg-orange-100",
+    };
+  }
+  return {
+    card: "border-slate-200 bg-white",
+    bar: "bg-slate-300",
+    muted: "text-slate-500",
+    title: "text-slate-900",
+    amount: "text-slate-900",
+    edit: "border-slate-200 text-slate-500 hover:bg-slate-100",
+  };
 }
 function Modal({
   title,
