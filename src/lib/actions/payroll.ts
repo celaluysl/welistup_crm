@@ -104,14 +104,42 @@ export async function createPartnerOwnership(
     data: { user },
   } = await s.auth.getUser();
   if (!user) return { error: "Oturum bulunamadı." };
-  const { error } = await s
-    .from("partner_ownerships")
-    .insert({
-      ...p.data,
-      effective_to: p.data.effective_to || null,
-      created_by: user.id,
-    });
+  const { error } = await s.from("partner_ownerships").insert({
+    ...p.data,
+    effective_to: p.data.effective_to || null,
+    created_by: user.id,
+  });
   if (error) return { error: error.message };
   revalidatePath("/partners");
   return { success: "Ortaklık oranı geçmişe eklendi." };
+}
+
+export async function updatePartnerOwnership(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z
+    .object({
+      ownership_id: z.string().uuid(),
+      ownership_percent: z.coerce.number().positive().max(100),
+      effective_from: z.string().date(),
+      effective_to: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+
+  if (!parsed.success) return { error: "Ortaklık bilgilerini kontrol edin." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("partner_ownerships")
+    .update({
+      ownership_percent: parsed.data.ownership_percent,
+      effective_from: parsed.data.effective_from,
+      effective_to: parsed.data.effective_to || null,
+    })
+    .eq("id", parsed.data.ownership_id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/partners");
+  return { success: "Ortaklık dönemi güncellendi." };
 }
