@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   GenerateVendorAccrualsForm,
+  VendorAccrualAmountForm,
   VendorPaymentForm,
 } from "@/components/forms/vendor-accrual-forms";
 import { PageHeader } from "@/components/ui/page-header";
@@ -28,14 +29,14 @@ export default async function VendorPayments({
     s
       .from("vendor_accruals")
       .select(
-        "id,amount,currency,due_date,status,vendors(name),projects(name,clients(company_name)),project_services(services(name)),vendor_payments(amount)",
+        "id,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,requires_amount_review,due_date,status,notes,vendors(name),projects(name,clients(company_name)),project_services(services(name)),vendor_payments(amount)",
       )
       .eq("year", year)
       .eq("month", month)
       .order("due_date"),
     s
       .from("accounts")
-      .select("id,name,currency")
+      .select("id,name,currency,billing_preference")
       .eq("status", "active")
       .order("name"),
   ]);
@@ -121,11 +122,24 @@ export default async function VendorPayments({
                   <b>{formatMoney(remaining, r.currency)}</b>
                 </div>
               </div>
-              {remaining > 0 && (
+              <div className="mt-2 text-xs text-slate-500">
+                {r.billing_preference === "invoiced"
+                  ? `Faturalı · ${formatMoney(r.net_amount, r.currency)} net + KDV %${r.vat_rate}`
+                  : "Faturasız · KDV uygulanmaz"}
+                {r.notes ? ` · ${r.notes}` : ""}
+              </div>
+              {r.requires_amount_review && (
+                <VendorAccrualAmountForm accrualId={r.id} />
+              )}
+              {remaining > 0 && !r.requires_amount_review && (
                 <VendorPaymentForm
                   accrualId={r.id}
                   remaining={remaining}
-                  accounts={accounts || []}
+                  accounts={(accounts || []).filter(
+                    (account) =>
+                      account.currency === r.currency &&
+                      account.billing_preference === r.billing_preference,
+                  )}
                 />
               )}
             </Card>

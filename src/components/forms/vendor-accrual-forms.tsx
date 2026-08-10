@@ -3,10 +3,49 @@ import { useActionState } from "react";
 import {
   generateVendorAccruals,
   payVendorAccrual,
+  updateVendorAccrualAmount,
 } from "@/lib/actions/vendors";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 type Account = { id: string; name: string; currency: string };
+export function VendorAccrualAmountForm({ accrualId }: { accrualId: string }) {
+  const [state, action, pending] = useActionState(
+    updateVendorAccrualAmount,
+    null,
+  );
+  return (
+    <form
+      action={action}
+      className="mt-4 grid gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2"
+    >
+      <input type="hidden" name="accrual_id" value={accrualId} />
+      <Field label="Bu ayın net proje bedeli">
+        <input
+          name="net_amount"
+          type="number"
+          min="0"
+          step="0.01"
+          required
+          className={inputClass}
+        />
+      </Field>
+      <Field label="İş / hakediş açıklaması">
+        <input
+          name="notes"
+          required
+          className={inputClass}
+          placeholder="Bu ay yapılan işi yazın"
+        />
+      </Field>
+      <Result state={state} />
+      <div className="sm:col-span-2">
+        <Button disabled={pending}>
+          {pending ? "Onaylanıyor…" : "Hakedişi onayla"}
+        </Button>
+      </div>
+    </form>
+  );
+}
 export function GenerateVendorAccrualsForm({
   year,
   month,

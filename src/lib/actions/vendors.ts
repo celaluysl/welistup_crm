@@ -51,6 +51,10 @@ export async function createVendorAssignment(
       start_date: z.string().date(),
       end_date: z.string().optional(),
       default_amount: z.coerce.number().min(0),
+      payment_model: z.enum(["monthly_fixed", "monthly_variable", "one_time"]),
+      billing_preference: z.enum(["invoiced", "uninvoiced"]),
+      vat_rate: z.coerce.number().min(0).max(100),
+      payment_day: z.coerce.number().int().min(1).max(31),
       currency: z.enum(["TRY", "USD", "EUR", "GBP"]),
       notes: z.string().optional(),
     })
@@ -69,6 +73,34 @@ export async function createVendorAssignment(
   if (error) return { error: error.message };
   revalidatePath(`/vendors/${p.data.vendor_id}`);
   return { success: "Proje hizmeti atandı." };
+}
+export async function updateVendorAccrualAmount(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const p = z
+    .object({
+      accrual_id: z.string().uuid(),
+      net_amount: z.coerce.number().min(0),
+      notes: z.string().trim().min(2),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!p.success)
+    return { error: "Hakediş tutarı ve açıklamasını kontrol edin." };
+  const s = await createClient();
+  const { error } = await s.rpc("update_vendor_accrual_amount", {
+    p_accrual_id: p.data.accrual_id,
+    p_net_amount: p.data.net_amount,
+    p_notes: p.data.notes,
+  });
+  if (error)
+    return {
+      error: error.message.includes("accrual_has_payments")
+        ? "Ödeme yapılmış hakediş değiştirilemez."
+        : error.message,
+    };
+  revalidatePath("/vendor-payments");
+  return { success: "Aylık hakediş onaylandı." };
 }
 export async function generateVendorAccruals(
   _: State,
@@ -116,7 +148,11 @@ export async function payVendorAccrual(_: State, fd: FormData): Promise<State> {
         ? "Tutar kalan hakedişten büyük olamaz."
         : error.message.includes("currency_mismatch")
           ? "Kasa ve hakediş para birimi aynı olmalı."
-          : error.message,
+          : error.message.includes("billing_preference_mismatch")
+            ? "Faturalı/faturasız durumuna uygun gider kasasını seçin."
+            : error.message.includes("amount_review_required")
+              ? "Ödeme öncesinde bu ayın hakediş tutarını onaylayın."
+              : error.message,
     };
   revalidatePath("/vendor-payments");
   revalidatePath("/accounts");
