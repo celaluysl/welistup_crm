@@ -131,7 +131,7 @@ export default async function Dashboard() {
                 label: "Vendor maliyeti",
                 value: formatMoney(financeSummary.vendor_costs),
                 icon: Banknote,
-                href: "/vendor-payments",
+                href: "/vendors",
               },
               {
                 label: "Tahmini dönem kârı",

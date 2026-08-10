@@ -126,10 +126,6 @@ export async function Sidebar() {
                   <Store size={18} />
                   Tedarikçiler
                 </Link>
-                <Link href="/vendor-payments" className={linkClass}>
-                  <ReceiptText size={18} />
-                  Tedarikçi Hakedişleri
-                </Link>
               </>
             )}
           </>
