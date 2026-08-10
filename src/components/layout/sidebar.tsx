@@ -100,7 +100,12 @@ export async function Sidebar() {
             </Link>
           </>
         )}
-        {(finance || collections) && (
+        {(finance ||
+          collections ||
+          vendors ||
+          accounts ||
+          payroll ||
+          monthClose) && (
           <>
             <Group>Finans</Group>
             {finance && (
@@ -115,24 +120,22 @@ export async function Sidebar() {
               <Landmark size={18} />
               Alacak ve Tahsilat
             </Link>
-          </>
-        )}
-        {vendors && (
-          <>
-            <Group>Kaynaklar</Group>
-            <Link href="/vendors" className={linkClass}>
-              <Store size={18} />
-              Tedarikçiler
-            </Link>
-            <Link href="/vendor-payments" className={linkClass}>
-              <ReceiptText size={18} />
-              Tedarikçi Hakedişleri
-            </Link>
+            {vendors && (
+              <>
+                <Link href="/vendors" className={linkClass}>
+                  <Store size={18} />
+                  Tedarikçiler
+                </Link>
+                <Link href="/vendor-payments" className={linkClass}>
+                  <ReceiptText size={18} />
+                  Tedarikçi Hakedişleri
+                </Link>
+              </>
+            )}
           </>
         )}
         {accounts && (
           <>
-            {!finance && !collections && <Group>Finans</Group>}
             <Link href="/accounts" className={linkClass}>
               <WalletCards size={18} />
               Kasalar
