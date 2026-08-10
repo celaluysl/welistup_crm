@@ -163,18 +163,18 @@ export async function Sidebar() {
           </Link>
         )}
         {monthClose && (
-          <>
-            <Link href="/partners" className={linkClass}>
-              <Users size={18} />
-              Ortaklar
-            </Link>
-            <Link href="/month-close" className={linkClass}>
-              <CalendarCheck size={18} />
-              Ay Kapanışı
-            </Link>
-          </>
+          <Link href="/month-close" className={linkClass}>
+            <CalendarCheck size={18} />
+            Ay Kapanışı
+          </Link>
         )}
         <Group>Yönetim</Group>
+        {monthClose && (
+          <Link href="/partners" className={linkClass}>
+            <Users size={18} />
+            Ortaklar
+          </Link>
+        )}
         <Link href="/services" className={linkClass}>
           <Shapes size={18} />
           Hizmetler
