@@ -6,6 +6,10 @@ import {
   CollectionRow,
 } from "@/components/collections/collection-workspace";
 import { YearPeriodButton } from "@/components/collections/year-period-button";
+import {
+  HostingCollectionSection,
+  type HostingReceivableRow,
+} from "@/components/hosting/hosting-collection-section";
 
 export default async function Collections({
   searchParams,
@@ -20,26 +24,40 @@ export default async function Collections({
       ? parsedYear
       : now.getFullYear();
   const supabase = await createClient();
-  const [{ data, error }, { data: accounts }, { data: services }] =
-    await Promise.all([
-      supabase
-        .from("receivables")
-        .select(
-          "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(company_name),projects(name),payments(id,amount,payment_date,account_id,notes,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
-        )
-        .eq("service_periods.year", year)
-        .order("due_date", { ascending: true, nullsFirst: false }),
-      supabase
-        .from("accounts")
-        .select("id,name,currency")
-        .eq("status", "active")
-        .order("name"),
-      supabase
-        .from("services")
-        .select("id,name")
-        .eq("status", "active")
-        .order("name"),
-    ]);
+  await supabase.rpc("generate_hosting_receivables");
+  const [
+    { data, error },
+    { data: accounts },
+    { data: services },
+    { data: hostingReceivables, error: hostingError },
+  ] = await Promise.all([
+    supabase
+      .from("receivables")
+      .select(
+        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(company_name),projects(name),payments(id,amount,payment_date,account_id,notes,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
+      )
+      .eq("service_periods.year", year)
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("accounts")
+      .select("id,name,currency,billing_preference")
+      .eq("status", "active")
+      .order("name"),
+    supabase
+      .from("services")
+      .select("id,name")
+      .eq("status", "active")
+      .order("name"),
+    supabase
+      .from("hosting_receivables")
+      .select(
+        "id,due_date,amount,currency,billing_preference,status,hosting_subscriptions(domain,account_label),clients(company_name),hosting_payments(amount)",
+      )
+      .gte("due_date", `${year}-01-01`)
+      .lte("due_date", `${year}-12-31`)
+      .neq("status", "cancelled")
+      .order("due_date"),
+  ]);
   const rows: CollectionRow[] = (data || []).map((record) => {
     const period = relation(record.service_periods) as {
       year: number;
@@ -90,6 +108,25 @@ export default async function Collections({
       excessReceipts,
     };
   });
+  const hostingRows: HostingReceivableRow[] = (hostingReceivables || []).map(
+    (record) => ({
+      id: record.id,
+      domain: relation(record.hosting_subscriptions)?.domain || "Sunucu",
+      customer:
+        relation(record.clients)?.company_name ||
+        relation(record.hosting_subscriptions)?.account_label ||
+        "Bağımsız kayıt",
+      dueDate: record.due_date,
+      amount: Number(record.amount),
+      paid: (record.hosting_payments || []).reduce(
+        (sum, payment) => sum + Number(payment.amount),
+        0,
+      ),
+      currency: record.currency,
+      billing: record.billing_preference,
+      status: record.status,
+    }),
+  );
   return (
     <>
       <PageHeader
@@ -128,6 +165,12 @@ export default async function Collections({
           year={year}
         />
       )}
+      {!hostingError && (
+        <HostingCollectionSection
+          rows={hostingRows}
+          accounts={accounts || []}
+        />
+      )}
     </>
   );
 }
@@ -136,5 +179,7 @@ function relation(value: unknown) {
   return (Array.isArray(value) ? value[0] : value) as {
     company_name?: string;
     name?: string;
+    domain?: string;
+    account_label?: string;
   } | null;
 }

@@ -14,6 +14,7 @@ import {
   CalendarCheck,
   ReceiptText,
   CircleDollarSign,
+  Server,
   Settings,
   Shapes,
   Store,
@@ -128,6 +129,10 @@ export async function Sidebar() {
             <Link href="/collections" className={linkClass}>
               <Landmark size={18} />
               Alacak ve Tahsilat
+            </Link>
+            <Link href="/hosting" className={linkClass}>
+              <Server size={18} />
+              Sunucu Takibi
             </Link>
             {vendors && (
               <>
