@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ExpenseYearWorkspace,
+  type ExpenseDefinition,
   type ExpenseRow,
 } from "@/components/expenses/expense-year-workspace";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,7 @@ export default async function Expenses({
   await s.rpc("generate_recurring_manual_expenses", {
     p_until: `${year}-12-31`,
   });
-  const [vendorResult, manualResult, accountResult] = await Promise.all([
+  const [vendorResult, definitionResult, manualResult, accountResult] = await Promise.all([
     s
       .from("vendor_accruals")
       .select(
@@ -32,6 +33,13 @@ export default async function Expenses({
       .eq("billing_preference", billing)
       .neq("status", "cancelled")
       .order("month"),
+    s
+      .from("manual_expense_templates")
+      .select(
+        "id,name,category,net_amount,vat_rate,currency,billing_preference,due_day,notes,status,is_recurring",
+      )
+      .eq("billing_preference", billing)
+      .order("name"),
     s
       .from("manual_expenses")
       .select(
@@ -104,7 +112,26 @@ export default async function Expenses({
       requiresReview: false,
     })),
   ];
-  const error = vendorResult.error || manualResult.error || accountResult.error;
+  const definitions: ExpenseDefinition[] = (definitionResult.data || []).map(
+    (definition) => ({
+      id: definition.id,
+      name: definition.name,
+      category: definition.category,
+      net: Number(definition.net_amount),
+      vatRate: Number(definition.vat_rate),
+      currency: definition.currency,
+      billing: definition.billing_preference,
+      dueDay: definition.due_day,
+      notes: definition.notes,
+      status: definition.status,
+      isRecurring: definition.is_recurring,
+    }),
+  );
+  const error =
+    vendorResult.error ||
+    manualResult.error ||
+    definitionResult.error ||
+    accountResult.error;
   return (
     <>
       <PageHeader
@@ -157,6 +184,7 @@ export default async function Expenses({
       ) : (
         <ExpenseYearWorkspace
           rows={rows}
+          definitions={definitions}
           accounts={accountResult.data || []}
           year={year}
           billing={billing}

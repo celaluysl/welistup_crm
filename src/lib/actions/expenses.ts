@@ -50,12 +50,12 @@ export async function createManualExpense(
     notes: parsed.data.notes || null,
     created_by: user.id,
   };
-  let error;
-  if (parsed.data.recurrence === "monthly") {
-    const startsOn = `${parsed.data.year}-${String(parsed.data.month).padStart(2, "0")}-01`;
-    const { data: template, error: templateError } = await s
-      .from("manual_expense_templates")
-      .insert({
+  const startsOn = `${parsed.data.year}-${String(parsed.data.month).padStart(2, "0")}-01`;
+  const nextRun = new Date(`${startsOn}T12:00:00`);
+  if (parsed.data.recurrence === "one_time") nextRun.setMonth(nextRun.getMonth() + 1);
+  const { data: template, error: templateError } = await s
+    .from("manual_expense_templates")
+    .insert({
         name: parsed.data.name,
         category: parsed.data.category,
         net_amount: parsed.data.net_amount,
@@ -67,21 +67,30 @@ export async function createManualExpense(
           : null,
         starts_on: startsOn,
         ends_on: parsed.data.ends_on || null,
-        next_run_on: startsOn,
+        next_run_on:
+          parsed.data.recurrence === "monthly"
+            ? startsOn
+            : nextRun.toISOString().slice(0, 10),
         notes: parsed.data.notes || null,
+        is_active: parsed.data.recurrence === "monthly",
+        is_recurring: parsed.data.recurrence === "monthly",
+        status: "active",
         created_by: user.id,
       })
       .select("id")
       .single();
-    error = templateError;
-    if (!error && template) {
+  if (templateError || !template)
+    return { error: templateError?.message || "Gider kalemi oluşturulamadı." };
+  let error;
+  if (parsed.data.recurrence === "monthly") {
       const generated = await s.rpc("generate_recurring_manual_expenses", {
         p_until: `${parsed.data.year}-12-31`,
       });
       error = generated.error;
-    }
   } else {
-    ({ error } = await s.from("manual_expenses").insert(expense));
+    ({ error } = await s
+      .from("manual_expenses")
+      .insert({ ...expense, template_id: template.id }));
   }
   if (error) return { error: error.message };
   revalidatePath("/expenses");
@@ -148,7 +157,7 @@ export async function addManualExpenseMonth(
 ): Promise<State> {
   const parsed = z
     .object({
-      source_expense_id: z.string().uuid(),
+      definition_id: z.string().uuid(),
       year: z.coerce.number().int().min(2000).max(2200),
       month: z.coerce.number().int().min(1).max(12),
       net_amount: z.coerce.number().min(0),
@@ -164,9 +173,9 @@ export async function addManualExpenseMonth(
   } = await s.auth.getUser();
   if (!user) return { error: "Oturum bulunamadı." };
   const { data: source, error: sourceError } = await s
-    .from("manual_expenses")
-    .select("template_id,name,category,currency,billing_preference")
-    .eq("id", parsed.data.source_expense_id)
+    .from("manual_expense_templates")
+    .select("id,name,category,currency,billing_preference")
+    .eq("id", parsed.data.definition_id)
     .single();
   if (sourceError || !source)
     return { error: sourceError?.message || "Kaynak gider bulunamadı." };
@@ -174,7 +183,7 @@ export async function addManualExpenseMonth(
   const vat = source.billing_preference === "invoiced" ? parsed.data.vat_rate : 0;
   const vatAmount = Math.round(parsed.data.net_amount * vat) / 100;
   const { error } = await s.from("manual_expenses").insert({
-    template_id: source.template_id,
+    template_id: source.id,
     name: source.name,
     category: source.category,
     year: parsed.data.year,
@@ -215,6 +224,45 @@ export async function removeManualExpenseMonth(
   if (error) return { error: error.message };
   revalidatePath("/expenses");
   return { success: "Gider yalnızca bu aydan kaldırıldı." };
+}
+
+export async function updateManualExpenseDefinition(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z
+    .object({
+      definition_id: z.string().uuid(),
+      name: z.string().trim().min(2),
+      category: z.string().trim().min(2),
+      status: z.enum(["active", "inactive", "archived"]),
+      is_recurring: z.enum(["true", "false"]),
+      notes: z.string().trim().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Gider kalemi bilgilerini kontrol edin." };
+  const s = await createClient();
+  const nextMonth = new Date();
+  nextMonth.setDate(1);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  const { error } = await s
+    .from("manual_expense_templates")
+    .update({
+      name: parsed.data.name,
+      category: parsed.data.category,
+      status: parsed.data.status,
+      is_recurring: parsed.data.is_recurring === "true",
+      ...(
+        parsed.data.status === "active" && parsed.data.is_recurring === "true"
+          ? { next_run_on: nextMonth.toISOString().slice(0, 10) }
+          : {}
+      ),
+      notes: parsed.data.notes || null,
+    })
+    .eq("id", parsed.data.definition_id);
+  if (error) return { error: error.message };
+  revalidatePath("/expenses");
+  return { success: "Gider kalemi güncellendi." };
 }
 
 export async function repeatManualExpense(

@@ -9,6 +9,7 @@ import {
   payManualExpense,
   removeManualExpenseMonth,
   repeatManualExpense,
+  updateManualExpenseDefinition,
   updateManualExpense,
 } from "@/lib/actions/expenses";
 import {
@@ -39,6 +40,19 @@ export type ExpenseRow = {
   notes: string | null;
   requiresReview: boolean;
 };
+export type ExpenseDefinition = {
+  id: string;
+  name: string;
+  category: string;
+  net: number;
+  vatRate: number;
+  currency: string;
+  billing: "invoiced" | "uninvoiced";
+  dueDay: number | null;
+  notes: string | null;
+  status: "active" | "inactive" | "archived";
+  isRecurring: boolean;
+};
 type Account = {
   id: string;
   name: string;
@@ -62,20 +76,27 @@ const months = [
 
 export function ExpenseYearWorkspace({
   rows,
+  definitions,
   accounts,
   year,
   billing,
 }: {
   rows: ExpenseRow[];
+  definitions: ExpenseDefinition[];
   accounts: Account[];
   year: number;
   billing: "invoiced" | "uninvoiced";
 }) {
   const [selected, setSelected] = useState<ExpenseRow | null>(null);
+  const [selectedDefinition, setSelectedDefinition] =
+    useState<ExpenseDefinition | null>(null);
   const [addingMonth, setAddingMonth] = useState<{
-    source: ExpenseRow;
+    definition: ExpenseDefinition;
     month: number;
   } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<
+    "active" | "inactive" | "archived"
+  >("active");
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   const summary = useMemo(
@@ -89,22 +110,49 @@ export function ExpenseYearWorkspace({
   const groups = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; category: string; source: ExpenseRow; months: Map<number, ExpenseRow> }
+      {
+        key: string;
+        name: string;
+        category: string;
+        source: ExpenseRow | null;
+        definition: ExpenseDefinition | null;
+        status: "active" | "inactive" | "archived";
+        months: Map<number, ExpenseRow>;
+      }
     >();
+    for (const definition of definitions) {
+      map.set(`manual-template:${definition.id}`, {
+        key: `manual-template:${definition.id}`,
+        name: definition.name,
+        category: definition.category,
+        source: null,
+        definition,
+        status: definition.status,
+        months: new Map(),
+      });
+    }
     for (const row of rows) {
       const g = map.get(row.groupKey) || {
+        key: row.groupKey,
         name: row.name,
         category: row.category,
         source: row,
+        definition: null,
+        status: "active" as const,
         months: new Map(),
       };
+      g.source ||= row;
       g.months.set(row.month, row);
       map.set(row.groupKey, g);
     }
-    return [...map.values()];
-  }, [rows]);
+    return [...map.values()].filter(
+      (group) => !group.definition || group.status === statusFilter,
+    );
+  }, [definitions, rows, statusFilter]);
   const done = () => {
     setSelected(null);
+    setSelectedDefinition(null);
+    setAddingMonth(null);
     setCreating(false);
     router.refresh();
   };
@@ -119,7 +167,23 @@ export function ExpenseYearWorkspace({
           red
         />
       </div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-lg border bg-white p-1">
+          {([
+            ["active", "Aktif"],
+            ["inactive", "Pasif"],
+            ["archived", "Arşiv"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStatusFilter(value)}
+              className={`rounded-md px-4 py-2 text-sm font-semibold ${statusFilter === value ? "bg-[#CD0B16] text-white" : "text-slate-500 hover:bg-slate-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <Button onClick={() => setCreating(true)}>
           <Plus size={16} />
           Yeni gider ekle
@@ -144,10 +208,23 @@ export function ExpenseYearWorkspace({
           </thead>
           <tbody>
             {groups.map((g) => (
-              <tr key={g.name + g.category} className="border-b last:border-0">
+              <tr key={g.key} className="border-b last:border-0">
                 <td className="sticky left-0 z-10 border-r bg-white px-4 py-3">
-                  <b>{g.name}</b>
-                  <div className="mt-0.5 text-slate-400">{g.category}</div>
+                  {g.definition ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDefinition(g.definition)}
+                      className="w-full rounded-md text-left hover:text-[#CD0B16]"
+                    >
+                      <b>{g.name}</b>
+                      <div className="mt-0.5 text-slate-400">{g.category}</div>
+                      <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        {g.definition.isRecurring ? "Aylık tekrar" : "İhtiyaca göre"} · {g.status === "active" ? "Aktif" : g.status === "inactive" ? "Pasif" : "Arşiv"}
+                      </div>
+                    </button>
+                  ) : (
+                    <><b>{g.name}</b><div className="mt-0.5 text-slate-400">{g.category}</div></>
+                  )}
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const r = g.months.get(i + 1);
@@ -156,10 +233,10 @@ export function ExpenseYearWorkspace({
                       {r ? (
                         <Cell row={r} onClick={() => setSelected(r)} />
                       ) : (
-                        g.source.source === "manual" ? (
+                        g.definition ? (
                           <button
                             type="button"
-                            onClick={() => setAddingMonth({ source: g.source, month: i + 1 })}
+                            onClick={() => setAddingMonth({ definition: g.definition!, month: i + 1 })}
                             className="group flex h-14 w-full items-center justify-center rounded-lg bg-slate-50 text-slate-300 transition hover:bg-red-50 hover:text-[#CD0B16]"
                             aria-label={`${months[i]} ayına ${g.name} giderini ekle`}
                           >
@@ -205,10 +282,17 @@ export function ExpenseYearWorkspace({
       )}
       {addingMonth && (
         <AddMonthDialog
-          source={addingMonth.source}
+          definition={addingMonth.definition}
           year={year}
           month={addingMonth.month}
           onClose={() => setAddingMonth(null)}
+          onSaved={done}
+        />
+      )}
+      {selectedDefinition && (
+        <DefinitionDialog
+          definition={selectedDefinition}
+          onClose={() => setSelectedDefinition(null)}
           onSaved={done}
         />
       )}
@@ -535,24 +619,84 @@ function ManualExpenseEditor({
   );
 }
 
-function AddMonthDialog({ source, year, month, onClose, onSaved }: { source: ExpenseRow; year: number; month: number; onClose: () => void; onSaved: () => void }) {
+function AddMonthDialog({ definition, year, month, onClose, onSaved }: { definition: ExpenseDefinition; year: number; month: number; onClose: () => void; onSaved: () => void }) {
   const [state, action, pending] = useActionState(addManualExpenseMonth, null);
   const maxDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const sourceDueDay = source.dueDate ? Number(source.dueDate.slice(-2)) : null;
+  const sourceDueDay = definition.dueDay;
   const dueDate = sourceDueDay ? `${year}-${String(month).padStart(2, "0")}-${String(Math.min(sourceDueDay, maxDay)).padStart(2, "0")}` : "";
   useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
-  return <Modal title={`${months[month - 1]} · ${source.name} ekle`} onClose={onClose}>
+  return <Modal title={`${months[month - 1]} · ${definition.name} ekle`} onClose={onClose}>
     <form action={action} className="grid gap-4 sm:grid-cols-2">
-      <input type="hidden" name="source_expense_id" value={source.id} /><input type="hidden" name="year" value={year} /><input type="hidden" name="month" value={month} />
-      <div className="rounded-xl bg-slate-50 p-4 text-sm sm:col-span-2"><b>{source.name}</b><div className="mt-1 text-slate-500">{source.category} · Yalnızca {months[month - 1]} {year} kaydı oluşturulur.</div></div>
-      <Field label="Net tutar"><input name="net_amount" type="number" min="0" step="0.01" defaultValue={source.net} required className={inputClass} /></Field>
-      <Field label="KDV (%)"><input name="vat_rate" type="number" min="0" max="100" step="0.01" defaultValue={source.billing === "invoiced" ? source.vatRate : 0} disabled={source.billing === "uninvoiced"} className={inputClass} />{source.billing === "uninvoiced" && <input type="hidden" name="vat_rate" value="0" />}</Field>
+      <input type="hidden" name="definition_id" value={definition.id} /><input type="hidden" name="year" value={year} /><input type="hidden" name="month" value={month} />
+      <div className="rounded-xl bg-slate-50 p-4 text-sm sm:col-span-2"><b>{definition.name}</b><div className="mt-1 text-slate-500">{definition.category} · Yalnızca {months[month - 1]} {year} kaydı oluşturulur.</div></div>
+      <Field label="Net tutar"><input name="net_amount" type="number" min="0" step="0.01" defaultValue={definition.net} required className={inputClass} /></Field>
+      <Field label="KDV (%)"><input name="vat_rate" type="number" min="0" max="100" step="0.01" defaultValue={definition.billing === "invoiced" ? definition.vatRate : 0} disabled={definition.billing === "uninvoiced"} className={inputClass} />{definition.billing === "uninvoiced" && <input type="hidden" name="vat_rate" value="0" />}</Field>
       <Field label="Vade"><input name="due_date" type="date" defaultValue={dueDate} className={inputClass} /></Field>
-      <Field label="Bu aya özel not"><input name="notes" defaultValue={source.notes || ""} className={inputClass} /></Field>
+      <Field label="Bu aya özel not"><input name="notes" defaultValue={definition.notes || ""} className={inputClass} /></Field>
       <Result state={state} />
       <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button><Button disabled={pending}>{pending ? "Ekleniyor…" : "Bu aya ekle"}</Button></div>
     </form>
   </Modal>;
+}
+
+function DefinitionDialog({
+  definition,
+  onClose,
+  onSaved,
+}: {
+  definition: ExpenseDefinition;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [state, action, pending] = useActionState(
+    updateManualExpenseDefinition,
+    null,
+  );
+  useEffect(() => {
+    if (state?.success) onSaved();
+  }, [state?.success, onSaved]);
+  return (
+    <Modal title={`Gider kalemi · ${definition.name}`} onClose={onClose}>
+      <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+        Bu alan gider kaleminin kalıcı tanımıdır. Pasife veya arşive almak,
+        geçmiş aylardaki ödeme ve gider kayıtlarını silmez.
+      </div>
+      <form action={action} className="grid gap-4 sm:grid-cols-2">
+        <input type="hidden" name="definition_id" value={definition.id} />
+        <Field label="Gider adı">
+          <input name="name" defaultValue={definition.name} required className={inputClass} />
+        </Field>
+        <Field label="Kategori">
+          <input name="category" defaultValue={definition.category} required className={inputClass} />
+        </Field>
+        <Field label="Durum">
+          <select name="status" defaultValue={definition.status} className={inputClass}>
+            <option value="active">Aktif</option>
+            <option value="inactive">Pasif</option>
+            <option value="archived">Arşiv</option>
+          </select>
+        </Field>
+        <Field label="Çalışma biçimi">
+          <select
+            name="is_recurring"
+            defaultValue={String(definition.isRecurring)}
+            className={inputClass}
+          >
+            <option value="false">İhtiyaç olduğunda aya ekle</option>
+            <option value="true">Her ay otomatik oluştur</option>
+          </select>
+        </Field>
+        <Field label="Genel not" className="sm:col-span-2">
+          <textarea name="notes" defaultValue={definition.notes || ""} className={inputClass} />
+        </Field>
+        <Result state={state} />
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
+          <Button disabled={pending}>{pending ? "Kaydediliyor…" : "Gider kalemini güncelle"}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 function VendorReview({
   row,
