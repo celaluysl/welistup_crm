@@ -45,6 +45,12 @@ export type CollectionRow = {
   }[];
 };
 type Account = { id: string; name: string; currency: string };
+type HostingPaymentTotal = {
+  month: number;
+  currency: string;
+  amount: number;
+  count: number;
+};
 const months = [
   "Ocak",
   "Şubat",
@@ -65,11 +71,13 @@ export function CollectionWorkspace({
   accounts,
   services,
   year,
+  hostingPayments,
 }: {
   rows: CollectionRow[];
   accounts: Account[];
   services: { id: string; name: string }[];
   year: number;
+  hostingPayments: HostingPaymentTotal[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -90,8 +98,8 @@ export function CollectionWorkspace({
       (!billing || row.billing === billing),
   );
   const summary = useMemo(
-    () =>
-      filtered
+    () => {
+      const projectSummary = filtered
         .filter((row) => row.currency === "TRY")
         .reduce(
           (value, row) => ({
@@ -103,8 +111,23 @@ export function CollectionWorkspace({
           }),
           { expected: 0, collected: 0, remaining: 0, overdue: 0 },
         ),
-    [filtered],
+        hostingCollected = hostingPayments
+          .filter((payment) => payment.currency === "TRY")
+          .reduce((sum, payment) => sum + payment.amount, 0);
+      return {
+        ...projectSummary,
+        collected: projectSummary.collected + hostingCollected,
+      };
+    },
+    [filtered, hostingPayments],
   );
+  const hostingMonths = useMemo(() => {
+    const map = new Map<number, HostingPaymentTotal[]>();
+    for (const payment of hostingPayments) {
+      map.set(payment.month, [...(map.get(payment.month) || []), payment]);
+    }
+    return map;
+  }, [hostingPayments]);
   const groups = useMemo(() => {
     const map = new Map<
       string,
@@ -217,6 +240,45 @@ export function CollectionWorkspace({
               </tr>
             </thead>
             <tbody>
+              <tr className="border-b bg-orange-50/30">
+                <td className="sticky left-0 z-10 border-r bg-orange-50 px-4 py-3">
+                  <div className="font-semibold text-slate-800">
+                    Toplu Sunucu Ödemeleri
+                  </div>
+                  <div className="mt-1 text-slate-400">
+                    Yalnızca tahsilat yapılan aylar
+                  </div>
+                </td>
+                <td className="px-3 font-medium">Sunucu</td>
+                <td className="px-3">
+                  <span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">
+                    Tahsilat
+                  </span>
+                </td>
+                {Array.from({ length: 12 }, (_, index) => {
+                  const payments = hostingMonths.get(index + 1) || [];
+                  return (
+                    <td key={index} className="border-l p-1.5">
+                      {payments.length ? (
+                        <div className="min-h-16 rounded-lg border border-orange-100 bg-orange-50 px-2 py-1.5 text-left">
+                          {payments.map((payment) => (
+                            <div key={payment.currency}>
+                              <b className="text-orange-900">
+                                {formatMoney(payment.amount, payment.currency)}
+                              </b>
+                              <div className="text-[10px] text-orange-700">
+                                {payment.count} sunucu ödemesi
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="h-16 rounded-lg bg-slate-50" />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
               {groups.map((group) => (
                 <tr
                   key={`${group.project}-${group.service}`}
