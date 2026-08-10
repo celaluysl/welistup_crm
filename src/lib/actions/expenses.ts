@@ -142,6 +142,81 @@ export async function updateManualExpense(
   return { success: "Bu aya ait gider güncellendi." };
 }
 
+export async function addManualExpenseMonth(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z
+    .object({
+      source_expense_id: z.string().uuid(),
+      year: z.coerce.number().int().min(2000).max(2200),
+      month: z.coerce.number().int().min(1).max(12),
+      net_amount: z.coerce.number().min(0),
+      vat_rate: z.coerce.number().min(0).max(100),
+      due_date: z.string().optional(),
+      notes: z.string().trim().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Ay ve gider bilgilerini kontrol edin." };
+  const s = await createClient();
+  const {
+    data: { user },
+  } = await s.auth.getUser();
+  if (!user) return { error: "Oturum bulunamadı." };
+  const { data: source, error: sourceError } = await s
+    .from("manual_expenses")
+    .select("template_id,name,category,currency,billing_preference")
+    .eq("id", parsed.data.source_expense_id)
+    .single();
+  if (sourceError || !source)
+    return { error: sourceError?.message || "Kaynak gider bulunamadı." };
+
+  const vat = source.billing_preference === "invoiced" ? parsed.data.vat_rate : 0;
+  const vatAmount = Math.round(parsed.data.net_amount * vat) / 100;
+  const { error } = await s.from("manual_expenses").insert({
+    template_id: source.template_id,
+    name: source.name,
+    category: source.category,
+    year: parsed.data.year,
+    month: parsed.data.month,
+    net_amount: parsed.data.net_amount,
+    vat_rate: vat,
+    vat_amount: vatAmount,
+    amount: parsed.data.net_amount + vatAmount,
+    currency: source.currency,
+    billing_preference: source.billing_preference,
+    due_date: parsed.data.due_date || null,
+    notes: parsed.data.notes || null,
+    created_by: user.id,
+  });
+  if (error)
+    return {
+      error: error.code === "23505" ? "Bu gider ilgili ayda zaten bulunuyor." : error.message,
+    };
+  revalidatePath("/expenses");
+  return { success: "Gider seçilen aya eklendi." };
+}
+
+export async function removeManualExpenseMonth(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z.object({ expense_id: z.string().uuid() }).safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Gider kaydı geçersiz." };
+  const s = await createClient();
+  const { count, error: paymentError } = await s
+    .from("manual_expense_payments")
+    .select("id", { count: "exact", head: true })
+    .eq("manual_expense_id", parsed.data.expense_id);
+  if (paymentError) return { error: paymentError.message };
+  if ((count || 0) > 0)
+    return { error: "Ödeme işlenmiş bir gider ay kaydı kaldırılamaz." };
+  const { error } = await s.from("manual_expenses").delete().eq("id", parsed.data.expense_id);
+  if (error) return { error: error.message };
+  revalidatePath("/expenses");
+  return { success: "Gider yalnızca bu aydan kaldırıldı." };
+}
+
 export async function repeatManualExpense(
   _: State,
   fd: FormData,

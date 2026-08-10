@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { Plus, ReceiptText, X } from "lucide-react";
+import { Plus, ReceiptText, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createManualExpense,
+  addManualExpenseMonth,
   payManualExpense,
+  removeManualExpenseMonth,
   repeatManualExpense,
   updateManualExpense,
 } from "@/lib/actions/expenses";
@@ -70,6 +72,10 @@ export function ExpenseYearWorkspace({
   billing: "invoiced" | "uninvoiced";
 }) {
   const [selected, setSelected] = useState<ExpenseRow | null>(null);
+  const [addingMonth, setAddingMonth] = useState<{
+    source: ExpenseRow;
+    month: number;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   const summary = useMemo(
@@ -83,12 +89,13 @@ export function ExpenseYearWorkspace({
   const groups = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; category: string; months: Map<number, ExpenseRow> }
+      { name: string; category: string; source: ExpenseRow; months: Map<number, ExpenseRow> }
     >();
     for (const row of rows) {
       const g = map.get(row.groupKey) || {
         name: row.name,
         category: row.category,
+        source: row,
         months: new Map(),
       };
       g.months.set(row.month, row);
@@ -149,7 +156,18 @@ export function ExpenseYearWorkspace({
                       {r ? (
                         <Cell row={r} onClick={() => setSelected(r)} />
                       ) : (
-                        <div className="h-14 rounded-lg bg-slate-50" />
+                        g.source.source === "manual" ? (
+                          <button
+                            type="button"
+                            onClick={() => setAddingMonth({ source: g.source, month: i + 1 })}
+                            className="group flex h-14 w-full items-center justify-center rounded-lg bg-slate-50 text-slate-300 transition hover:bg-red-50 hover:text-[#CD0B16]"
+                            aria-label={`${months[i]} ayına ${g.name} giderini ekle`}
+                          >
+                            <span className="flex items-center gap-1 text-[11px] font-semibold opacity-0 transition group-hover:opacity-100"><Plus size={14} /> Bu aya ekle</span>
+                          </button>
+                        ) : (
+                          <div className="h-14 rounded-lg bg-slate-50" />
+                        )
                       )}
                     </td>
                   );
@@ -182,6 +200,15 @@ export function ExpenseYearWorkspace({
               a.billing_preference === selected.billing,
           )}
           onClose={() => setSelected(null)}
+          onSaved={done}
+        />
+      )}
+      {addingMonth && (
+        <AddMonthDialog
+          source={addingMonth.source}
+          year={year}
+          month={addingMonth.month}
+          onClose={() => setAddingMonth(null)}
           onSaved={done}
         />
       )}
@@ -397,9 +424,13 @@ function ManualExpenseEditor({
     repeatManualExpense,
     null,
   );
+  const [removeState, removeAction, removing] = useActionState(
+    removeManualExpenseMonth,
+    null,
+  );
   useEffect(() => {
-    if (editState?.success || repeatState?.success) onSaved();
-  }, [editState?.success, repeatState?.success, onSaved]);
+    if (editState?.success || repeatState?.success || removeState?.success) onSaved();
+  }, [editState?.success, repeatState?.success, removeState?.success, onSaved]);
   return (
     <div className="mt-5 border-t pt-5">
       <h3 className="mb-3 font-semibold">Bu ayın giderini düzenle</h3>
@@ -493,8 +524,35 @@ function ManualExpenseEditor({
           </div>
         </form>
       )}
+      <form action={removeAction} className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+        <input type="hidden" name="expense_id" value={row.id} />
+        <div><b className="text-sm">Bu aydaki kaydı kaldır</b><p className="mt-1 text-xs text-slate-500">Diğer aylar ve aylık tekrar ayarı korunur.</p></div>
+        <Button type="submit" variant="danger" disabled={removing || row.paid > 0} onClick={(event) => { if (!window.confirm("Bu gideri yalnızca bu aydan kaldırmak istiyor musunuz?")) event.preventDefault(); }}><Trash2 size={15} /> {removing ? "Kaldırılıyor…" : "Bu aydan kaldır"}</Button>
+        <Result state={removeState} />
+        {row.paid > 0 && <p className="w-full text-xs text-amber-700">Ödeme işlenmiş kayıt kaldırılamaz.</p>}
+      </form>
     </div>
   );
+}
+
+function AddMonthDialog({ source, year, month, onClose, onSaved }: { source: ExpenseRow; year: number; month: number; onClose: () => void; onSaved: () => void }) {
+  const [state, action, pending] = useActionState(addManualExpenseMonth, null);
+  const maxDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const sourceDueDay = source.dueDate ? Number(source.dueDate.slice(-2)) : null;
+  const dueDate = sourceDueDay ? `${year}-${String(month).padStart(2, "0")}-${String(Math.min(sourceDueDay, maxDay)).padStart(2, "0")}` : "";
+  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
+  return <Modal title={`${months[month - 1]} · ${source.name} ekle`} onClose={onClose}>
+    <form action={action} className="grid gap-4 sm:grid-cols-2">
+      <input type="hidden" name="source_expense_id" value={source.id} /><input type="hidden" name="year" value={year} /><input type="hidden" name="month" value={month} />
+      <div className="rounded-xl bg-slate-50 p-4 text-sm sm:col-span-2"><b>{source.name}</b><div className="mt-1 text-slate-500">{source.category} · Yalnızca {months[month - 1]} {year} kaydı oluşturulur.</div></div>
+      <Field label="Net tutar"><input name="net_amount" type="number" min="0" step="0.01" defaultValue={source.net} required className={inputClass} /></Field>
+      <Field label="KDV (%)"><input name="vat_rate" type="number" min="0" max="100" step="0.01" defaultValue={source.billing === "invoiced" ? source.vatRate : 0} disabled={source.billing === "uninvoiced"} className={inputClass} />{source.billing === "uninvoiced" && <input type="hidden" name="vat_rate" value="0" />}</Field>
+      <Field label="Vade"><input name="due_date" type="date" defaultValue={dueDate} className={inputClass} /></Field>
+      <Field label="Bu aya özel not"><input name="notes" defaultValue={source.notes || ""} className={inputClass} /></Field>
+      <Result state={state} />
+      <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button><Button disabled={pending}>{pending ? "Ekleniyor…" : "Bu aya ekle"}</Button></div>
+    </form>
+  </Modal>;
 }
 function VendorReview({
   row,
