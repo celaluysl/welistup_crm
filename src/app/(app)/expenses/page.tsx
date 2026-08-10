@@ -19,6 +19,9 @@ export default async function Expenses({
     year = Math.min(2200, Math.max(2000, parsed));
   const billing = q.type === "uninvoiced" ? "uninvoiced" : "invoiced";
   const s = await createClient();
+  await s.rpc("generate_recurring_manual_expenses", {
+    p_until: `${year}-12-31`,
+  });
   const [vendorResult, manualResult, accountResult] = await Promise.all([
     s
       .from("vendor_accruals")
@@ -32,7 +35,7 @@ export default async function Expenses({
     s
       .from("manual_expenses")
       .select(
-        "id,month,name,category,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,manual_expense_payments(amount)",
+        "id,template_id,month,name,category,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,manual_expense_payments(amount)",
       )
       .eq("year", year)
       .eq("billing_preference", billing)
@@ -78,7 +81,10 @@ export default async function Expenses({
     ...(manualResult.data || []).map((r) => ({
       id: r.id,
       source: "manual" as const,
-      groupKey: `manual:${r.name}:${r.category}`,
+      templateId: r.template_id,
+      groupKey: r.template_id
+        ? `manual-template:${r.template_id}`
+        : `manual:${r.name}:${r.category}`,
       month: r.month,
       name: r.name,
       category: r.category,

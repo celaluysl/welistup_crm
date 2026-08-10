@@ -22,6 +22,8 @@ export async function createManualExpense(
       billing_preference: z.enum(["invoiced", "uninvoiced"]),
       due_date: z.string().optional(),
       notes: z.string().trim().optional(),
+      recurrence: z.enum(["one_time", "monthly"]),
+      ends_on: z.string().optional(),
     })
     .safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: "Gider bilgilerini kontrol edin." };
@@ -33,20 +35,174 @@ export async function createManualExpense(
   const vat =
     parsed.data.billing_preference === "invoiced" ? parsed.data.vat_rate : 0;
   const vatAmount = Math.round(parsed.data.net_amount * vat) / 100;
-  const { error } = await s
-    .from("manual_expenses")
-    .insert({
-      ...parsed.data,
-      vat_rate: vat,
-      vat_amount: vatAmount,
-      amount: parsed.data.net_amount + vatAmount,
-      due_date: parsed.data.due_date || null,
-      notes: parsed.data.notes || null,
-      created_by: user.id,
-    });
+  const expense = {
+    name: parsed.data.name,
+    category: parsed.data.category,
+    year: parsed.data.year,
+    month: parsed.data.month,
+    net_amount: parsed.data.net_amount,
+    currency: parsed.data.currency,
+    billing_preference: parsed.data.billing_preference,
+    vat_rate: vat,
+    vat_amount: vatAmount,
+    amount: parsed.data.net_amount + vatAmount,
+    due_date: parsed.data.due_date || null,
+    notes: parsed.data.notes || null,
+    created_by: user.id,
+  };
+  let error;
+  if (parsed.data.recurrence === "monthly") {
+    const startsOn = `${parsed.data.year}-${String(parsed.data.month).padStart(2, "0")}-01`;
+    const { data: template, error: templateError } = await s
+      .from("manual_expense_templates")
+      .insert({
+        name: parsed.data.name,
+        category: parsed.data.category,
+        net_amount: parsed.data.net_amount,
+        vat_rate: vat,
+        currency: parsed.data.currency,
+        billing_preference: parsed.data.billing_preference,
+        due_day: parsed.data.due_date
+          ? Number(parsed.data.due_date.slice(-2))
+          : null,
+        starts_on: startsOn,
+        ends_on: parsed.data.ends_on || null,
+        next_run_on: startsOn,
+        notes: parsed.data.notes || null,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+    error = templateError;
+    if (!error && template) {
+      const generated = await s.rpc("generate_recurring_manual_expenses", {
+        p_until: `${parsed.data.year}-12-31`,
+      });
+      error = generated.error;
+    }
+  } else {
+    ({ error } = await s.from("manual_expenses").insert(expense));
+  }
   if (error) return { error: error.message };
   revalidatePath("/expenses");
   return { success: "Gider kaydedildi." };
+}
+
+export async function updateManualExpense(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z
+    .object({
+      expense_id: z.string().uuid(),
+      name: z.string().trim().min(2),
+      category: z.string().trim().min(2),
+      net_amount: z.coerce.number().min(0),
+      vat_rate: z.coerce.number().min(0).max(100),
+      due_date: z.string().optional(),
+      notes: z.string().trim().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Gider bilgilerini kontrol edin." };
+  const s = await createClient();
+  const { data: current, error: readError } = await s
+    .from("manual_expenses")
+    .select("billing_preference,manual_expense_payments(amount)")
+    .eq("id", parsed.data.expense_id)
+    .single();
+  if (readError || !current)
+    return { error: readError?.message || "Gider bulunamadı." };
+  const vat =
+    current.billing_preference === "invoiced" ? parsed.data.vat_rate : 0;
+  const vatAmount = Math.round(parsed.data.net_amount * vat) / 100;
+  const total = parsed.data.net_amount + vatAmount;
+  const paid =
+    (current.manual_expense_payments as { amount: number }[] | null)?.reduce(
+      (sum, payment) => sum + Number(payment.amount),
+      0,
+    ) || 0;
+  if (total < paid)
+    return { error: "Toplam gider, ödenmiş tutardan düşük olamaz." };
+  const { error } = await s
+    .from("manual_expenses")
+    .update({
+      name: parsed.data.name,
+      category: parsed.data.category,
+      net_amount: parsed.data.net_amount,
+      vat_rate: vat,
+      vat_amount: vatAmount,
+      amount: total,
+      due_date: parsed.data.due_date || null,
+      notes: parsed.data.notes || null,
+      status: paid >= total ? "paid" : paid > 0 ? "partial" : "pending",
+    })
+    .eq("id", parsed.data.expense_id);
+  if (error) return { error: error.message };
+  revalidatePath("/expenses");
+  return { success: "Bu aya ait gider güncellendi." };
+}
+
+export async function repeatManualExpense(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z
+    .object({
+      expense_id: z.string().uuid(),
+      ends_on: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Tekrarlama bilgilerini kontrol edin." };
+  const s = await createClient();
+  const {
+    data: { user },
+  } = await s.auth.getUser();
+  if (!user) return { error: "Oturum bulunamadı." };
+  const { data: expense, error: readError } = await s
+    .from("manual_expenses")
+    .select("*")
+    .eq("id", parsed.data.expense_id)
+    .single();
+  if (readError || !expense)
+    return { error: readError?.message || "Gider bulunamadı." };
+  if (expense.template_id)
+    return { error: "Bu gider zaten aylık tekrarlanıyor." };
+  const startsOn = `${expense.year}-${String(expense.month).padStart(2, "0")}-01`;
+  const nextRun = new Date(`${startsOn}T12:00:00`);
+  nextRun.setMonth(nextRun.getMonth() + 1);
+  const { data: template, error: templateError } = await s
+    .from("manual_expense_templates")
+    .insert({
+      name: expense.name,
+      category: expense.category,
+      net_amount: expense.net_amount,
+      vat_rate: expense.vat_rate,
+      currency: expense.currency,
+      billing_preference: expense.billing_preference,
+      due_day: expense.due_date
+        ? Number(String(expense.due_date).slice(-2))
+        : null,
+      starts_on: startsOn,
+      ends_on: parsed.data.ends_on || null,
+      next_run_on: nextRun.toISOString().slice(0, 10),
+      notes: expense.notes,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (templateError || !template)
+    return { error: templateError?.message || "Şablon oluşturulamadı." };
+  const linked = await s
+    .from("manual_expenses")
+    .update({ template_id: template.id })
+    .eq("id", expense.id);
+  if (linked.error) return { error: linked.error.message };
+  const generated = await s.rpc("generate_recurring_manual_expenses", {
+    p_until: `${expense.year}-12-31`,
+  });
+  if (generated.error) return { error: generated.error.message };
+  revalidatePath("/expenses");
+  return { success: "Gider sonraki aylarda tekrarlanacak." };
 }
 
 export async function payManualExpense(_: State, fd: FormData): Promise<State> {

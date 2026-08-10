@@ -3,7 +3,12 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { Plus, ReceiptText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createManualExpense, payManualExpense } from "@/lib/actions/expenses";
+import {
+  createManualExpense,
+  payManualExpense,
+  repeatManualExpense,
+  updateManualExpense,
+} from "@/lib/actions/expenses";
 import {
   payVendorAccrual,
   updateVendorAccrualAmount,
@@ -16,6 +21,7 @@ import { formatMoney } from "@/lib/utils";
 export type ExpenseRow = {
   id: string;
   source: "vendor" | "manual";
+  templateId?: string | null;
   groupKey: string;
   month: number;
   name: string;
@@ -134,7 +140,7 @@ export function ExpenseYearWorkspace({
               <tr key={g.name + g.category} className="border-b last:border-0">
                 <td className="sticky left-0 z-10 border-r bg-white px-4 py-3">
                   <b>{g.name}</b>
-                  <div className="mt-1 text-slate-400">{g.category}</div>
+                  <div className="mt-0.5 text-slate-400">{g.category}</div>
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const r = g.months.get(i + 1);
@@ -143,7 +149,7 @@ export function ExpenseYearWorkspace({
                       {r ? (
                         <Cell row={r} onClick={() => setSelected(r)} />
                       ) : (
-                        <div className="h-20 rounded-lg bg-slate-50" />
+                        <div className="h-14 rounded-lg bg-slate-50" />
                       )}
                     </td>
                   );
@@ -187,25 +193,20 @@ function Cell({ row, onClick }: { row: ExpenseRow; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`h-20 w-full rounded-lg p-2 text-left transition ${row.requiresReview ? "bg-amber-50" : remaining === 0 ? "bg-emerald-50 hover:bg-emerald-100" : "bg-slate-50 hover:bg-slate-100"}`}
+      className={`h-14 w-full rounded-lg px-2 py-1.5 text-left transition ${row.requiresReview ? "bg-amber-50" : remaining === 0 ? "bg-emerald-50 hover:bg-emerald-100" : "bg-slate-50 hover:bg-slate-100"}`}
     >
       <b>
         {row.requiresReview
           ? "Tutar bekliyor"
           : formatMoney(row.total, row.currency)}
       </b>
-      <div className="mt-1 text-[10px] text-slate-500">
+      <div className="mt-0.5 text-[10px] text-slate-500">
         {row.requiresReview
           ? "Aylık bedeli girin"
           : remaining === 0
             ? "Ödendi"
             : `Kalan ${formatMoney(remaining, row.currency)}`}
       </div>
-      {row.vatRate > 0 && (
-        <div className="mt-0.5 text-[10px] text-slate-400">
-          KDV %{row.vatRate} dâhil
-        </div>
-      )}
     </button>
   );
 }
@@ -221,6 +222,9 @@ function CreateDialog({
   onSaved: () => void;
 }) {
   const [state, action, pending] = useActionState(createManualExpense, null);
+  const [recurrence, setRecurrence] = useState<"one_time" | "monthly">(
+    "one_time",
+  );
   useEffect(() => {
     if (state?.success) onSaved();
   }, [state?.success, onSaved]);
@@ -266,6 +270,24 @@ function CreateDialog({
             ))}
           </select>
         </Field>
+        <Field label="Tekrarlama">
+          <select
+            name="recurrence"
+            value={recurrence}
+            onChange={(event) =>
+              setRecurrence(event.target.value as "one_time" | "monthly")
+            }
+            className={inputClass}
+          >
+            <option value="one_time">Yalnızca bu ay</option>
+            <option value="monthly">Her ay tekrarla</option>
+          </select>
+        </Field>
+        {recurrence === "monthly" && (
+          <Field label="Tekrarlama bitişi (opsiyonel)">
+            <input name="ends_on" type="date" className={inputClass} />
+          </Field>
+        )}
         <Field label="Net tutar">
           <input
             name="net_amount"
@@ -340,6 +362,9 @@ function DetailDialog({
         {row.category}
         {row.notes ? ` · ${row.notes}` : ""}
       </div>
+      {row.source === "manual" && (
+        <ManualExpenseEditor row={row} onSaved={onSaved} />
+      )}
       {row.requiresReview && row.source === "vendor" ? (
         <VendorReview row={row} onSaved={onSaved} />
       ) : remaining > 0 ? (
@@ -355,6 +380,120 @@ function DetailDialog({
         </div>
       )}
     </Modal>
+  );
+}
+function ManualExpenseEditor({
+  row,
+  onSaved,
+}: {
+  row: ExpenseRow;
+  onSaved: () => void;
+}) {
+  const [editState, editAction, editing] = useActionState(
+    updateManualExpense,
+    null,
+  );
+  const [repeatState, repeatAction, repeating] = useActionState(
+    repeatManualExpense,
+    null,
+  );
+  useEffect(() => {
+    if (editState?.success || repeatState?.success) onSaved();
+  }, [editState?.success, repeatState?.success, onSaved]);
+  return (
+    <div className="mt-5 border-t pt-5">
+      <h3 className="mb-3 font-semibold">Bu ayın giderini düzenle</h3>
+      <form action={editAction} className="grid gap-3 sm:grid-cols-2">
+        <input type="hidden" name="expense_id" value={row.id} />
+        <Field label="Gider adı">
+          <input
+            name="name"
+            defaultValue={row.name}
+            required
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Kategori">
+          <input
+            name="category"
+            defaultValue={row.category}
+            required
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Net tutar">
+          <input
+            name="net_amount"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={row.net}
+            required
+            className={inputClass}
+          />
+        </Field>
+        <Field label="KDV (%)">
+          <input
+            name="vat_rate"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            defaultValue={row.vatRate}
+            disabled={row.billing === "uninvoiced"}
+            className={inputClass}
+          />
+          {row.billing === "uninvoiced" && (
+            <input type="hidden" name="vat_rate" value="0" />
+          )}
+        </Field>
+        <Field label="Vade">
+          <input
+            name="due_date"
+            type="date"
+            defaultValue={row.dueDate || ""}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Bu aya özel not">
+          <input
+            name="notes"
+            defaultValue={row.notes || ""}
+            className={inputClass}
+          />
+        </Field>
+        <Result state={editState} />
+        <div className="sm:col-span-2">
+          <Button disabled={editing}>
+            {editing ? "Kaydediliyor…" : "Bu ayı güncelle"}
+          </Button>
+        </div>
+      </form>
+      {!row.templateId && (
+        <form
+          action={repeatAction}
+          className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"
+        >
+          <input type="hidden" name="expense_id" value={row.id} />
+          <div>
+            <b className="text-sm">Sonraki aylarda tekrarla</b>
+            <p className="mt-1 text-xs text-slate-500">
+              Bu ay korunur; sonraki aylara aynı tutarla yeni kayıtlar
+              hazırlanır.
+            </p>
+          </div>
+          <Field label="Bitiş tarihi (opsiyonel)">
+            <input name="ends_on" type="date" className={inputClass} />
+          </Field>
+          <Result state={repeatState} />
+          <div className="sm:col-span-2">
+            <Button variant="secondary" disabled={repeating}>
+              {repeating ? "Hazırlanıyor…" : "Aylık tekrara çevir"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 function VendorReview({
