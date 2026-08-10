@@ -74,6 +74,61 @@ export async function createVendorAssignment(
   revalidatePath(`/vendors/${p.data.vendor_id}`);
   return { success: "Proje hizmeti atandı." };
 }
+export async function updateVendorAssignment(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const p = z
+    .object({
+      assignment_id: z.string().uuid(),
+      vendor_id: z.string().uuid(),
+      project_service_id: z.string().uuid(),
+      start_date: z.string().date(),
+      end_date: z.string().optional(),
+      default_amount: z.coerce.number().min(0),
+      payment_model: z.enum(["monthly_fixed", "monthly_variable", "one_time"]),
+      billing_preference: z.enum(["invoiced", "uninvoiced"]),
+      vat_rate: z.coerce.number().min(0).max(100),
+      payment_day: z.coerce.number().int().min(1).max(31),
+      currency: z.enum(["TRY", "USD", "EUR", "GBP"]),
+      status: z.enum(["active", "inactive"]),
+      notes: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!p.success) return { error: "Atama bilgilerini kontrol edin." };
+  const s = await createClient();
+  const {
+    data: { user },
+  } = await s.auth.getUser();
+  if (!user) return { error: "Oturum bulunamadı." };
+  const { assignment_id, vendor_id } = p.data;
+  const changes = {
+    start_date: p.data.start_date,
+    end_date: p.data.end_date,
+    default_amount: p.data.default_amount,
+    payment_model: p.data.payment_model,
+    billing_preference: p.data.billing_preference,
+    vat_rate: p.data.vat_rate,
+    payment_day: p.data.payment_day,
+    currency: p.data.currency,
+    status: p.data.status,
+    notes: p.data.notes,
+  };
+  const { error } = await s
+    .from("vendor_assignments")
+    .update({
+      ...changes,
+      end_date: changes.end_date || null,
+      vat_rate:
+        changes.billing_preference === "invoiced" ? changes.vat_rate : 0,
+    })
+    .eq("id", assignment_id)
+    .eq("vendor_id", vendor_id);
+  if (error) return { error: error.message };
+  revalidatePath(`/vendors/${vendor_id}`);
+  revalidatePath("/vendor-payments");
+  return { success: "Atama güncellendi." };
+}
 export async function updateVendorAccrualAmount(
   _: State,
   fd: FormData,
