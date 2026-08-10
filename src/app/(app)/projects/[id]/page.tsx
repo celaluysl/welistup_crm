@@ -38,6 +38,8 @@ type ProjectService = {
   billing_preference: string;
   start_date: string;
   payment_term_days: number;
+  payment_interval_months: number;
+  payment_timing: "advance" | "arrears";
   status: string;
   notes: string | null;
   services: { name: string } | null;
@@ -91,7 +93,7 @@ export default async function ProjectDetail({
       supabase
         .from("projects")
         .select(
-          "id,name,domain,description,start_date,billing_preference,is_white_label,status,clients(company_name),project_services(id,periodicity,billing_preference,start_date,payment_term_days,status,notes,services(name),project_service_prices(id,net_price,vat_rate,currency,effective_from,effective_to),project_service_members(profile_id,profiles(first_name,last_name,email)))",
+          "id,name,domain,description,start_date,billing_preference,is_white_label,status,clients(company_name),project_services(id,periodicity,billing_preference,start_date,payment_term_days,payment_interval_months,payment_timing,status,notes,services(name),project_service_prices(id,net_price,vat_rate,currency,effective_from,effective_to),project_service_members(profile_id,profiles(first_name,last_name,email)))",
         )
         .eq("id", id)
         .single(),
@@ -249,6 +251,10 @@ export default async function ProjectDetail({
             <Detail
               label="Ödeme vadesi"
               value={`${service?.payment_term_days || 0} gün`}
+            />
+            <Detail
+              label="Tahsilat periyodu"
+              value={`${service?.payment_interval_months || 1} ayda bir · ${service?.payment_timing === "arrears" ? "dönem sonunda" : "dönem başında"}`}
             />
           </div>
           {(project.description || service?.notes) && (

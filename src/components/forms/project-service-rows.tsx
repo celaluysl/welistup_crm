@@ -12,6 +12,8 @@ type InitialService = {
   vat_rate: number;
   currency: "TRY" | "USD" | "EUR" | "GBP";
   payment_term_days: number;
+  payment_interval_months: number;
+  payment_timing: "advance" | "arrears";
   notes: string | null;
 };
 export function ProjectServiceRows({
@@ -110,7 +112,30 @@ export function ProjectServiceRows({
               className={inputClass}
             />
           </Field>
-          <Field label="Hizmet notu" className="md:col-span-2 xl:col-span-5">
+          <Field label="Ödeme periyodu">
+            <select
+              name="service_payment_interval_months"
+              defaultValue={initialService?.payment_interval_months ?? 1}
+              className={inputClass}
+            >
+              <option value="1">Her ay</option>
+              <option value="3">3 ayda bir</option>
+              <option value="6">6 ayda bir</option>
+              <option value="9">9 ayda bir</option>
+              <option value="12">12 ayda bir</option>
+            </select>
+          </Field>
+          <Field label="Tahsilat zamanı">
+            <select
+              name="service_payment_timing"
+              defaultValue={initialService?.payment_timing || "advance"}
+              className={inputClass}
+            >
+              <option value="advance">Dönem başında peşin</option>
+              <option value="arrears">Dönem sonunda</option>
+            </select>
+          </Field>
+          <Field label="Hizmet notu" className="md:col-span-2 xl:col-span-4">
             <input
               name="service_notes"
               defaultValue={initialService?.notes || ""}

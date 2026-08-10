@@ -22,6 +22,8 @@ export type CollectionRow = {
   paid: number;
   currency: string;
   dueDate: string | null;
+  coverageStart: string | null;
+  coverageEnd: string | null;
   status: string;
   payments: {
     id: string;
@@ -499,6 +501,11 @@ function PaymentModal({
             </div>
             <h2 className="mt-1 text-xl font-bold">{row.project}</h2>
             <p className="text-sm text-slate-500">{row.client}</p>
+            {row.coverageStart && row.coverageEnd && (
+              <p className="mt-1 text-xs font-medium text-[#CD0B16]">
+                Kapsanan dönem: {row.coverageStart} – {row.coverageEnd}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}

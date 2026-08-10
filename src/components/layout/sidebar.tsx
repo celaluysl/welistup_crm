@@ -105,10 +105,6 @@ export async function Sidebar() {
             <Group>Finans</Group>
             {finance && (
               <>
-                <Link href="/operations" className={linkClass}>
-                  <ReceiptText size={18} />
-                  Ödeme Kontrolü
-                </Link>
                 <Link href="/financial-reports" className={linkClass}>
                   <BarChart3 size={18} />
                   Finansal Raporlar
@@ -117,7 +113,7 @@ export async function Sidebar() {
             )}
             <Link href="/collections" className={linkClass}>
               <Landmark size={18} />
-              Tahsilat
+              Alacak ve Tahsilat
             </Link>
           </>
         )}

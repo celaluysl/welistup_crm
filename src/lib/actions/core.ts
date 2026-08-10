@@ -128,6 +128,11 @@ const projectServiceSchema = z.object({
   vat_rate: z.coerce.number().min(0).max(100),
   currency: z.enum(["TRY", "USD", "EUR", "GBP"]),
   payment_term_days: z.coerce.number().int().min(0),
+  payment_interval_months: z.coerce
+    .number()
+    .int()
+    .refine((value) => [1, 3, 6, 9, 12].includes(value)),
+  payment_timing: z.enum(["advance", "arrears"]),
   notes: z.string().trim().optional(),
 });
 function parseProjectServices(
@@ -151,6 +156,8 @@ function parseProjectServices(
     vats = fd.getAll("service_vat_rate").map(String),
     currencies = fd.getAll("service_currency").map(String),
     terms = fd.getAll("service_payment_term_days").map(String),
+    intervals = fd.getAll("service_payment_interval_months").map(String),
+    timings = fd.getAll("service_payment_timing").map(String),
     notes = fd.getAll("service_notes").map(String);
   const parsed = z.array(projectServiceSchema).safeParse(
     ids.map((service_id, i) => ({
@@ -160,6 +167,8 @@ function parseProjectServices(
       vat_rate: vats[i],
       currency: currencies[i],
       payment_term_days: terms[i],
+      payment_interval_months: intervals[i],
+      payment_timing: timings[i],
       notes: notes[i] || "",
     })),
   );

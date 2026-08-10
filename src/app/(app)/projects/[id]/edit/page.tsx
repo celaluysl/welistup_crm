@@ -19,7 +19,7 @@ export default async function EditProject({
     s
       .from("projects")
       .select(
-        "id,client_id,name,domain,description,start_date,billing_preference,is_white_label,project_services(id,service_id,periodicity,currency,payment_term_days,notes,status,services(name),project_service_members(profile_id),project_service_prices(net_price,vat_rate,currency,effective_from,effective_to))",
+        "id,client_id,name,domain,description,start_date,billing_preference,is_white_label,project_services(id,service_id,periodicity,currency,payment_term_days,payment_interval_months,payment_timing,notes,status,services(name),project_service_members(profile_id),project_service_prices(net_price,vat_rate,currency,effective_from,effective_to))",
       )
       .eq("id", id)
       .single(),

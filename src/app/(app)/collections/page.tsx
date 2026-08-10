@@ -25,7 +25,7 @@ export default async function Collections({
       supabase
         .from("receivables")
         .select(
-          "id,total_amount,currency,due_date,status,clients(company_name),projects(name),payments(id,amount,payment_date,account_id,notes,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
+          "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(company_name),projects(name),payments(id,amount,payment_date,account_id,notes,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
         )
         .eq("service_periods.year", year)
         .order("due_date", { ascending: true, nullsFirst: false }),
@@ -83,6 +83,8 @@ export default async function Collections({
       paid: payments.reduce((sum, payment) => sum + payment.amount, 0),
       currency: record.currency,
       dueDate: record.due_date,
+      coverageStart: record.coverage_start,
+      coverageEnd: record.coverage_end,
       status: record.status,
       payments,
       excessReceipts,

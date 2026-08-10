@@ -19,6 +19,8 @@ type Project = {
     periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
     currency: "TRY" | "USD" | "EUR" | "GBP";
     payment_term_days: number;
+    payment_interval_months: number;
+    payment_timing: "advance" | "arrears";
     notes: string | null;
     status: string;
     services: { name: string } | { name: string }[] | null;
@@ -43,7 +45,8 @@ export function EditProjectForm({
   services: {
     id: string;
     name: string;
-    default_periodicity: "monthly" | "variable_monthly" | "one_time" | "periodic";
+    default_periodicity:
+      "monthly" | "variable_monthly" | "one_time" | "periodic";
   }[];
   specialists: {
     id: string;
@@ -138,6 +141,8 @@ export function EditProjectForm({
                 vat_rate: currentPrice?.vat_rate ?? 20,
                 currency: currentPrice?.currency || activeService.currency,
                 payment_term_days: activeService.payment_term_days,
+                payment_interval_months: activeService.payment_interval_months,
+                payment_timing: activeService.payment_timing,
                 notes: activeService.notes,
               }
             : undefined
