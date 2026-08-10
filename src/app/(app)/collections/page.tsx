@@ -8,6 +8,7 @@ import {
 import { YearPeriodButton } from "@/components/collections/year-period-button";
 import {
   HostingCollectionSection,
+  type HostingPaymentHistoryRow,
   type HostingReceivableRow,
 } from "@/components/hosting/hosting-collection-section";
 
@@ -30,6 +31,8 @@ export default async function Collections({
     { data: accounts },
     { data: services },
     { data: hostingReceivables, error: hostingError },
+    { data: hostingSubscriptions, error: hostingSubscriptionsError },
+    { data: hostingPayments, error: hostingPaymentsError },
   ] = await Promise.all([
     supabase
       .from("receivables")
@@ -57,6 +60,19 @@ export default async function Collections({
       .lte("due_date", `${year}-12-31`)
       .neq("status", "cancelled")
       .order("due_date"),
+    supabase
+      .from("hosting_subscriptions")
+      .select("id,domain,account_label,currency,status,clients(company_name)")
+      .eq("is_paid", true)
+      .order("domain"),
+    supabase
+      .from("hosting_payments")
+      .select(
+        "amount,currency,payment_date,hosting_receivables!inner(subscription_id)",
+      )
+      .gte("payment_date", `${year}-01-01`)
+      .lte("payment_date", `${year}-12-31`)
+      .order("payment_date"),
   ]);
   const rows: CollectionRow[] = (data || []).map((record) => {
     const period = relation(record.service_periods) as {
@@ -127,6 +143,38 @@ export default async function Collections({
       status: record.status,
     }),
   );
+  const hostingPaymentsBySubscription = new Map<
+    string,
+    Map<number, { amount: number; count: number }>
+  >();
+  for (const payment of hostingPayments || []) {
+    const subscriptionId = relation(payment.hosting_receivables)?.subscription_id;
+    if (!subscriptionId) continue;
+    const month = Number(payment.payment_date.slice(5, 7));
+    const subscriptionMonths =
+      hostingPaymentsBySubscription.get(subscriptionId) || new Map();
+    const current = subscriptionMonths.get(month) || { amount: 0, count: 0 };
+    subscriptionMonths.set(month, {
+      amount: current.amount + Number(payment.amount),
+      count: current.count + 1,
+    });
+    hostingPaymentsBySubscription.set(subscriptionId, subscriptionMonths);
+  }
+  const hostingHistoryRows: HostingPaymentHistoryRow[] = (
+    hostingSubscriptions || []
+  ).map((subscription) => ({
+    subscriptionId: subscription.id,
+    domain: subscription.domain,
+    customer:
+      relation(subscription.clients)?.company_name ||
+      subscription.account_label ||
+      "Bağımsız kayıt",
+    currency: subscription.currency,
+    status: subscription.status,
+    months: Array.from(
+      hostingPaymentsBySubscription.get(subscription.id)?.entries() || [],
+    ).map(([month, payment]) => ({ month, ...payment })),
+  }));
   return (
     <>
       <PageHeader
@@ -165,10 +213,14 @@ export default async function Collections({
           year={year}
         />
       )}
-      {!hostingError && (
+      {!hostingError &&
+        !hostingSubscriptionsError &&
+        !hostingPaymentsError && (
         <HostingCollectionSection
           rows={hostingRows}
+          historyRows={hostingHistoryRows}
           accounts={accounts || []}
+          year={year}
         />
       )}
     </>
@@ -181,5 +233,6 @@ function relation(value: unknown) {
     name?: string;
     domain?: string;
     account_label?: string;
+    subscription_id?: string;
   } | null;
 }
