@@ -60,8 +60,21 @@ export function HostingWorkspace({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50">
+              {rows.map((r) => {
+                const overdue =
+                  r.status === "active" &&
+                  r.isPaid &&
+                  Boolean(r.nextPaymentDate) &&
+                  days(r.nextPaymentDate) < 0;
+                return (
+                <tr
+                  key={r.id}
+                  className={
+                    overdue
+                      ? "bg-rose-50/80 hover:bg-rose-100/80"
+                      : "hover:bg-slate-50"
+                  }
+                >
                   <td className="px-4 py-4">
                     <b>{r.domain}</b>
                     {r.notes && (
@@ -93,7 +106,14 @@ export function HostingWorkspace({
                   <td
                     className={`px-4 py-4 font-bold ${days(r.nextPaymentDate) <= 30 ? "text-[#CD0B16]" : "text-slate-600"}`}
                   >
-                    {r.nextPaymentDate ? days(r.nextPaymentDate) : "—"}
+                    <div className="flex items-center gap-2">
+                      <span>{r.nextPaymentDate ? days(r.nextPaymentDate) : "—"}</span>
+                      {overdue && (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                          Ödemesi geçti
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-4">
                     <button
@@ -105,7 +125,8 @@ export function HostingWorkspace({
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
