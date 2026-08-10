@@ -200,7 +200,12 @@ export async function repeatManualExpense(
   const generated = await s.rpc("generate_recurring_manual_expenses", {
     p_until: `${expense.year}-12-31`,
   });
-  if (generated.error) return { error: generated.error.message };
+  if (generated.error)
+    return {
+      error: generated.error.message.includes("interval")
+        ? "Aylık tarih hesaplanamadı. Lütfen tekrar deneyin."
+        : generated.error.message,
+    };
   revalidatePath("/expenses");
   return { success: "Gider sonraki aylarda tekrarlanacak." };
 }
