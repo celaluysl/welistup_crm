@@ -102,8 +102,14 @@ export default async function Expenses({
   return (
     <>
       <PageHeader
-        title="Gider Kontrolü"
-        description="Faturalı ve faturasız giderleri, hakedişleri ve kasa çıkışlarını ay ay takip edin."
+        title={
+          billing === "invoiced" ? "Faturalı Giderler" : "Faturasız Giderler"
+        }
+        description={
+          billing === "invoiced"
+            ? "KDV dâhil giderleri, tedarikçi hakedişlerini ve kasa çıkışlarını ay ay takip edin."
+            : "KDV uygulanmayan giderleri ve faturasız gider kasasından yapılan ödemeleri ay ay takip edin."
+        }
       />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">

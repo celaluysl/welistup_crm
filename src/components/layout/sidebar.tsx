@@ -115,9 +115,13 @@ export async function Sidebar() {
                   <BarChart3 size={18} />
                   Finansal Raporlar
                 </Link>
-                <Link href="/expenses" className={linkClass}>
+                <Link href="/expenses?type=invoiced" className={linkClass}>
+                  <ReceiptText size={18} />
+                  Faturalı Giderler
+                </Link>
+                <Link href="/expenses?type=uninvoiced" className={linkClass}>
                   <CircleDollarSign size={18} />
-                  Gider Kontrolü
+                  Faturasız Giderler
                 </Link>
               </>
             )}
