@@ -29,7 +29,7 @@ export default async function VendorDetail({
   const services = (projectServices || []).map((item) => ({
     id: item.id,
     currency: item.currency,
-    label: `${rel(item.projects)?.company_name} · ${rel(item.projects)?.name} · ${rel(item.services)?.name}`,
+    label: `${projectLabel(item.projects)} · ${rel(item.services)?.name}`,
   }));
   const assignments = (vendor.vendor_assignments || []).map(
     (assignment: Record<string, unknown>) => {
@@ -39,7 +39,7 @@ export default async function VendorDetail({
       } | null;
       return {
         ...assignment,
-        project_label: `${rel(service?.projects)?.company_name} · ${rel(service?.projects)?.name}`,
+        project_label: projectLabel(service?.projects),
         service_name: rel(service?.services)?.name || "Hizmet",
       };
     },
@@ -59,6 +59,14 @@ export default async function VendorDetail({
         services={services}
       />
     </>
+  );
+}
+
+function projectLabel(value: unknown) {
+  const project = rel(value) as { name?: string; clients?: unknown } | null;
+  const client = rel(project?.clients);
+  return (
+    [client?.company_name, project?.name].filter(Boolean).join(" · ") || "Proje"
   );
 }
 
