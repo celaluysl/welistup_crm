@@ -17,6 +17,7 @@ export type AccountOption = {
   billing_preference?: string;
   opening_balance?: number;
   status?: string;
+  notes?: string | null;
 };
 export function AccountForm({
   account,
@@ -96,6 +97,15 @@ export function AccountForm({
           </select>
         </Field>
       )}
+      <Field label="Kasa notu" className="sm:col-span-2">
+        <textarea
+          name="notes"
+          rows={3}
+          defaultValue={account?.notes || ""}
+          placeholder="Örn. Her ayın başında 100.000 TL ayrılır."
+          className={`${inputClass} h-auto py-2`}
+        />
+      </Field>
       <Result state={state} />
       <div className="sm:col-span-2 flex justify-end">
         <Button disabled={pending}>

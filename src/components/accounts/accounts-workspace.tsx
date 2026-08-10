@@ -101,6 +101,13 @@ export function AccountsWorkspace({ accounts }: { accounts: AccountRow[] }) {
                 Sabit başlangıç:{" "}
                 {formatMoney(account.opening_balance, account.currency)}
               </div>
+              {account.notes && (
+                <p
+                  className={`mt-3 line-clamp-2 border-t border-current/10 pt-3 text-xs leading-5 ${tone.muted}`}
+                >
+                  {account.notes}
+                </p>
+              )}
             </Card>
           );
         })}

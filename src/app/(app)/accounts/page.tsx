@@ -7,7 +7,7 @@ export default async function Accounts() {
     s
       .from("accounts")
       .select(
-        "id,name,account_type,currency,billing_preference,opening_balance,status",
+        "id,name,account_type,currency,billing_preference,opening_balance,status,notes",
       )
       .neq("status", "archived")
       .order("name"),

@@ -11,6 +11,7 @@ export async function createAccount(_: State, fd: FormData): Promise<State> {
       currency: z.enum(["TRY", "USD", "EUR", "GBP"]),
       billing_preference: z.enum(["invoiced", "uninvoiced"]),
       opening_balance: z.coerce.number(),
+      notes: z.string().trim().optional(),
     })
     .safeParse(Object.fromEntries(fd));
   if (!p.success) return { error: "Kasa bilgilerini kontrol edin." };
@@ -36,6 +37,7 @@ export async function updateAccount(_: State, fd: FormData): Promise<State> {
       billing_preference: z.enum(["invoiced", "uninvoiced"]),
       opening_balance: z.coerce.number(),
       status: z.enum(["active", "inactive"]),
+      notes: z.string().trim().optional(),
     })
     .safeParse(Object.fromEntries(fd));
   if (!p.success) return { error: "Kasa bilgilerini kontrol edin." };
@@ -79,22 +81,19 @@ export async function createManualAccountMovement(
     .eq("status", "active")
     .single();
   if (!account) return { error: "Aktif kasa bulunamadı." };
-  const { error } = await s
-    .from("finance_transactions")
-    .insert({
-      account_id: p.data.account_id,
-      transaction_date: p.data.date,
-      transaction_type: p.data.movement_type,
-      amount:
-        p.data.movement_type === "income" ? p.data.amount : -p.data.amount,
-      currency: account.currency,
-      category:
-        p.data.movement_type === "income"
-          ? "Manuel para girişi"
-          : "Manuel para çıkışı",
-      description: p.data.description,
-      created_by: user.id,
-    });
+  const { error } = await s.from("finance_transactions").insert({
+    account_id: p.data.account_id,
+    transaction_date: p.data.date,
+    transaction_type: p.data.movement_type,
+    amount: p.data.movement_type === "income" ? p.data.amount : -p.data.amount,
+    currency: account.currency,
+    category:
+      p.data.movement_type === "income"
+        ? "Manuel para girişi"
+        : "Manuel para çıkışı",
+    description: p.data.description,
+    created_by: user.id,
+  });
   if (error) return { error: error.message };
   revalidatePath("/accounts");
   revalidatePath("/transactions");
