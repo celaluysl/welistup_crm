@@ -145,16 +145,10 @@ export async function Sidebar() {
           </>
         )}
         {accounts && (
-          <>
-            <Link href="/accounts" className={linkClass}>
-              <WalletCards size={18} />
-              Kasalar
-            </Link>
-            <Link href="/transactions" className={linkClass}>
-              <ArrowLeftRight size={18} />
-              Finans Hareketleri
-            </Link>
-          </>
+          <Link href="/transactions" className={linkClass}>
+            <ArrowLeftRight size={18} />
+            Finans Hareketleri
+          </Link>
         )}
         {payroll && (
           <Link href="/payroll" className={linkClass}>
@@ -173,6 +167,12 @@ export async function Sidebar() {
           <Link href="/partners" className={linkClass}>
             <Users size={18} />
             Ortaklar
+          </Link>
+        )}
+        {accounts && (
+          <Link href="/accounts" className={linkClass}>
+            <WalletCards size={18} />
+            Kasalar
           </Link>
         )}
         <Link href="/services" className={linkClass}>
