@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import {
   createSalaryConfig,
   generatePayroll,
@@ -8,8 +8,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 type Account = { id: string; name: string; currency: string };
-type Profile = { id: string; name: string; employmentType: "employee" | "partner" };
-export function SalaryConfigForm({ profiles, year, month }: { profiles: Profile[]; year: number; month: number }) {
+type Profile = {
+  id: string;
+  name: string;
+  employmentType: "employee" | "partner";
+};
+export function SalaryConfigForm({
+  profiles,
+  year,
+  month,
+}: {
+  profiles: Profile[];
+  year: number;
+  month: number;
+}) {
   const [state, action, pending] = useActionState(createSalaryConfig, null);
   return (
     <form action={action} className="grid gap-3 sm:grid-cols-2">
@@ -49,10 +61,18 @@ export function SalaryConfigForm({ profiles, year, month }: { profiles: Profile[
           className={inputClass}
         />
       </Field>
-      <Field label="Not" className="sm:col-span-2"><input name="notes" placeholder="Maaş değişikliği veya açıklama" className={inputClass}/></Field>
+      <Field label="Not" className="sm:col-span-2">
+        <input
+          name="notes"
+          placeholder="Maaş değişikliği veya açıklama"
+          className={inputClass}
+        />
+      </Field>
       <Result state={state} />
       <div className="sm:col-span-2">
-        <Button disabled={pending}>{pending ? "Kaydediliyor…" : "Sabit maaşı tanımla"}</Button>
+        <Button disabled={pending}>
+          {pending ? "Kaydediliyor…" : "Sabit maaşı tanımla"}
+        </Button>
       </div>
     </form>
   );
@@ -80,12 +100,17 @@ export function PayrollPaymentForm({
   payrollId,
   remaining,
   accounts,
+  onSuccess,
 }: {
   payrollId: string;
   remaining: number;
   accounts: Account[];
+  onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState(payPayroll, null);
+  useEffect(() => {
+    if (state?.success) onSuccess?.();
+  }, [state?.success, onSuccess]);
   return (
     <form
       action={action}

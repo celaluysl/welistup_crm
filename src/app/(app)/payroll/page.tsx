@@ -1,174 +1,204 @@
-import { createClient } from "@/lib/supabase/server";
-import { goToPayrollPeriod } from "@/lib/actions/payroll";
-import {
-  GeneratePayrollForm,
-  PayrollPaymentForm,
-} from "@/components/forms/payroll-forms";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
+import { GeneratePayrollForm } from "@/components/forms/payroll-forms";
+import {
+  PayrollYearWorkspace,
+  type PayrollYearRow,
+} from "@/components/payroll/payroll-year-workspace";
 import { Card } from "@/components/ui/card";
-import { formatMoney } from "@/lib/utils";
-type Payment = { amount: number };
+import { PageHeader } from "@/components/ui/page-header";
+import { createClient } from "@/lib/supabase/server";
+
+const monthNames = [
+  "Ocak",
+  "Şubat",
+  "Mart",
+  "Nisan",
+  "Mayıs",
+  "Haziran",
+  "Temmuz",
+  "Ağustos",
+  "Eylül",
+  "Ekim",
+  "Kasım",
+  "Aralık",
+];
+
+type PayrollPayment = {
+  id: string;
+  payroll_period_id: string;
+  amount: number;
+  payment_date: string;
+  notes: string | null;
+  account_id: string;
+};
+
+function safeNumber(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : fallback;
+}
+
 export default async function Payroll({
   searchParams,
 }: {
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
-  const q = await searchParams,
-    n = new Date(),
-    year = Number(q.year) || n.getFullYear(),
-    month = Number(q.month) || n.getMonth() + 1,
-    s = await createClient();
+  const query = await searchParams;
+  const now = new Date();
+  const requestedYear = safeNumber(query.year, now.getFullYear());
+  const requestedMonth = safeNumber(query.month, now.getMonth() + 1);
+  const year = Math.min(2200, Math.max(2000, requestedYear));
+  const month = Math.min(12, Math.max(1, requestedMonth));
+  const supabase = await createClient();
+
   const [payrollResult, profileResult, accountResult] = await Promise.all([
-    s.from("payroll_periods").select("*").eq("year", year).eq("month", month),
-    s.from("profiles").select("id,first_name,last_name"),
-    s.from("accounts").select("id,name,currency").eq("status", "active"),
+    supabase
+      .from("payroll_periods")
+      .select("id,profile_id,month,net_payable,currency,status,employment_type")
+      .eq("year", year)
+      .order("month"),
+    supabase.from("profiles").select("id,first_name,last_name"),
+    supabase
+      .from("accounts")
+      .select("id,name,currency")
+      .eq("status", "active")
+      .order("name"),
   ]);
-  const rows = payrollResult.data || [];
+
+  const payrollPeriods = payrollResult.data || [];
+  const paymentResult = payrollPeriods.length
+    ? await supabase
+        .from("payroll_payments")
+        .select("id,payroll_period_id,amount,payment_date,notes,account_id")
+        .in(
+          "payroll_period_id",
+          payrollPeriods.map((period) => period.id),
+        )
+        .order("payment_date", { ascending: false })
+    : { data: [] as PayrollPayment[], error: null };
+
   const profilesById = new Map(
     (profileResult.data || []).map((profile) => [profile.id, profile]),
   );
-  const paymentResult = rows.length
-    ? await s
-        .from("payroll_payments")
-        .select("payroll_period_id,amount")
-        .in(
-          "payroll_period_id",
-          rows.map((row) => row.id),
-        )
-    : { data: [], error: null };
-  const paymentsByPayroll = new Map<string, Payment[]>();
+  const accountsById = new Map(
+    (accountResult.data || []).map((account) => [account.id, account]),
+  );
+  const paymentsByPayroll = new Map<string, PayrollPayment[]>();
+
   for (const payment of paymentResult.data || []) {
     const current = paymentsByPayroll.get(payment.payroll_period_id) || [];
-    current.push({ amount: Number(payment.amount) });
+    current.push(payment);
     paymentsByPayroll.set(payment.payroll_period_id, current);
   }
+
+  const rows: PayrollYearRow[] = payrollPeriods.map((period) => {
+    const profile = profilesById.get(period.profile_id);
+    const payments = paymentsByPayroll.get(period.id) || [];
+
+    return {
+      id: period.id,
+      profileId: period.profile_id,
+      month: period.month,
+      name:
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+        "İsimsiz ekip üyesi",
+      employmentType: period.employment_type,
+      salary: Number(period.net_payable),
+      paid: payments.reduce(
+        (total, payment) => total + Number(payment.amount),
+        0,
+      ),
+      currency: period.currency,
+      status: period.status,
+      payments: payments.map((payment) => ({
+        id: payment.id,
+        amount: Number(payment.amount),
+        paymentDate: payment.payment_date,
+        accountName: accountsById.get(payment.account_id)?.name || null,
+        notes: payment.notes,
+      })),
+    };
+  });
+
   const loadError =
     payrollResult.error ||
     profileResult.error ||
     accountResult.error ||
     paymentResult.error;
-  const payrollSummary = rows.reduce(
-    (summary, row) => {
-      const paid = (paymentsByPayroll.get(row.id) || []).reduce(
-        (total, payment) => total + Number(payment.amount),
-        0,
-      );
-      return {
-        total: summary.total + Number(row.net_payable),
-        paid: summary.paid + paid,
-      };
-    },
-    { total: 0, paid: 0 },
-  );
+
   return (
     <>
       <PageHeader
         title="Maaşlar"
-        description="Çalışan ve ortak maaşları, kâr paylarından bağımsız olarak takip edilir."
+        description="Maaşları yıl boyunca ay ay izleyin; ödemeleri ilgili ayın hücresinden yönetin."
       />
-      <Card className="mb-6 p-5">
+
+      <Card className="mb-5 p-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <form action={goToPayrollPeriod} className="flex gap-2">
-            <input
-              name="year"
-              type="number"
-              defaultValue={year}
-              className="h-10 w-24 rounded-lg border px-3"
-            />
-            <input
-              name="month"
-              type="number"
-              min="1"
-              max="12"
-              defaultValue={month}
-              className="h-10 w-20 rounded-lg border px-3"
-            />
-            <button className="h-10 rounded-lg border px-4 text-sm font-semibold">
-              Göster
-            </button>
-          </form>
-          <GeneratePayrollForm year={year} month={month} />
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/payroll?year=${year - 1}&month=${month}`}
+              className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              ← {year - 1}
+            </Link>
+            <span className="rounded-lg bg-red-50 px-4 py-2 font-bold text-[#CD0B16]">
+              {year}
+            </span>
+            <Link
+              href={`/payroll?year=${year + 1}&month=${month}`}
+              className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              {year + 1} →
+            </Link>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <form className="flex items-end gap-2">
+              <input type="hidden" name="year" value={year} />
+              <label className="text-sm font-medium text-slate-600">
+                Kayıt oluşturulacak ay
+                <select
+                  name="month"
+                  defaultValue={month}
+                  className="mt-1 block h-10 rounded-lg border bg-white px-3"
+                >
+                  {monthNames.map((name, index) => (
+                    <option key={name} value={index + 1}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="h-10 rounded-lg border px-4 text-sm font-semibold hover:bg-slate-50">
+                Seç
+              </button>
+            </form>
+            <GeneratePayrollForm year={year} month={month} />
+          </div>
         </div>
       </Card>
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Card className="p-5">
-          <div className="text-sm text-slate-500">Toplam maaş</div>
-          <div className="mt-2 text-xl font-bold">
-            {formatMoney(payrollSummary.total, "TRY")}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-sm text-slate-500">Ödenen</div>
-          <div className="mt-2 text-xl font-bold text-emerald-700">
-            {formatMoney(payrollSummary.paid, "TRY")}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-sm text-slate-500">Kalan</div>
-          <div className="mt-2 text-xl font-bold text-[#CD0B16]">
-            {formatMoney(
-              Math.max(0, payrollSummary.total - payrollSummary.paid),
-              "TRY",
-            )}
-          </div>
-        </Card>
-      </div>
-      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-slate-600">
+
+      <Card className="mb-5 flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-slate-600">
         <span>
-          Sabit aylık maaş, ekip arkadaşının profilinden yönetilir. Bu ekran
-          yalnızca aylık kayıt ve ödemeleri gösterir.
+          Sabit aylık maaş ekip profilinden yönetilir. Hücreye tıklayarak ödeme
+          kaydedebilir ve geçmişi görebilirsiniz.
         </span>
         <Link href="/team" className="font-semibold text-[#CD0B16]">
           Ekip maaşlarını düzenle →
         </Link>
       </Card>
-      <div>
-        <div className="space-y-4">
-          {rows.map((r) => {
-            const p = profilesById.get(r.profile_id),
-              paid = (paymentsByPayroll.get(r.id) || []).reduce(
-                (a, x) => a + Number(x.amount),
-                0,
-              ),
-              remaining = Math.max(0, Number(r.net_payable) - paid);
-            return (
-              <Card key={r.id} className="p-5">
-                <div className="flex justify-between">
-                  <div>
-                    <b>
-                      {p?.first_name} {p?.last_name}
-                    </b>
-                    <div className="text-sm text-slate-500">
-                      {r.employment_type === "partner"
-                        ? "Ortak maaşı"
-                        : "Personel maaşı"}
-                    </div>
-                  </div>
-                  <b>{formatMoney(r.net_payable, r.currency)}</b>
-                </div>
-                {remaining > 0 && (
-                  <PayrollPaymentForm
-                    payrollId={r.id}
-                    remaining={remaining}
-                    accounts={accountResult.data || []}
-                  />
-                )}
-              </Card>
-            );
-          })}
-          {loadError && (
-            <Card className="border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
-              Maaş kayıtları yüklenemedi: {loadError.message}
-            </Card>
-          )}
-          {!loadError && !rows.length && (
-            <Card className="p-8 text-center text-sm text-slate-400">
-              Bu dönem için maaş kaydı yok.
-            </Card>
-          )}
-        </div>
-      </div>
+
+      {loadError ? (
+        <Card className="border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
+          Maaş kayıtları yüklenemedi: {loadError.message}
+        </Card>
+      ) : (
+        <PayrollYearWorkspace
+          rows={rows}
+          accounts={accountResult.data || []}
+          year={year}
+        />
+      )}
     </>
   );
 }
