@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, classifyUnallocatedReceipt, recordPayment, updatePayment } from "@/lib/actions/finance";
+import { addCollectionActivity, classifyUnallocatedReceipt, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -140,6 +140,20 @@ export function ReceiptClassificationForm({ receiptId, services, onSuccess, onCa
     <Field label="Eşleştirme notu" className="sm:col-span-2"><input name="notes" placeholder="Satışın kapsamı veya açıklaması" className={inputClass}/></Field>
     <Result state={state}/>
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Eşleştiriliyor…" : "Hizmetle eşleştir"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
+  </form>;
+}
+
+export function UnallocatedReceiptEditForm({ receipt, accounts, onSuccess, onCancel }: { receipt: { id: string; amount: number; receivedDate: string; accountId: string | null; notes: string | null }; accounts: { id: string; name: string; currency: string }[]; onSuccess: () => void; onCancel: () => void }) {
+  const [state, action, pending] = useActionState(updateUnallocatedReceipt, null);
+  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
+  return <form action={action} className="grid gap-4 sm:grid-cols-2">
+    <input type="hidden" name="receipt_id" value={receipt.id}/>
+    <Field label="Fazla tahsilat tutarı"><input name="amount" type="number" min="0.01" step="0.01" required defaultValue={receipt.amount} className={inputClass}/></Field>
+    <Field label="Ödemenin geldiği kasa"><select name="account_id" required defaultValue={receipt.accountId || ""} className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
+    <Field label="Gerçek ödeme tarihi"><input name="received_date" type="date" required defaultValue={receipt.receivedDate} className={inputClass}/></Field>
+    <Field label="Not"><input name="notes" defaultValue={receipt.notes || ""} className={inputClass}/></Field>
+    <Result state={state}/>
+    <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Fazla tahsilatı güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
   </form>;
 }
 

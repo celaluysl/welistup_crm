@@ -7,6 +7,7 @@ import {
   PaymentEditForm,
   PaymentForm,
   ReceiptClassificationForm,
+  UnallocatedReceiptEditForm,
 } from "@/components/forms/collection-forms";
 import { formatMoney } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ export type CollectionRow = {
     remainingAmount: number;
     receivedDate: string;
     status: string;
+    accountId: string | null;
     accountName: string | null;
     notes: string | null;
     matchedService: string | null;
@@ -548,6 +550,9 @@ function PaymentModal({
   const [matchingReceipt, setMatchingReceipt] = useState<
     CollectionRow["excessReceipts"][number] | null
   >(null);
+  const [editingReceipt, setEditingReceipt] = useState<
+    CollectionRow["excessReceipts"][number] | null
+  >(null);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
@@ -686,15 +691,10 @@ function PaymentModal({
                     >
                       +{formatMoney(receipt.amount, row.currency)}
                     </b>
-                    {receipt.status !== "allocated" && (
-                      <button
-                        type="button"
-                        onClick={() => setMatchingReceipt(receipt)}
-                        className="rounded-lg bg-[#CD0B16] px-3 py-2 text-xs font-semibold text-white"
-                      >
-                        Eşleştir
-                      </button>
-                    )}
+                    {receipt.status !== "allocated" && <>
+                      <button type="button" title="Fazla tahsilatı düzenle" onClick={() => { setEditingReceipt(receipt); setMatchingReceipt(null); }} className="rounded-md border border-amber-200 bg-white p-2 text-amber-700 hover:border-[#CD0B16] hover:text-[#CD0B16]"><Pencil size={14} /></button>
+                      <button type="button" onClick={() => { setMatchingReceipt(receipt); setEditingReceipt(null); }} className="rounded-lg bg-[#CD0B16] px-3 py-2 text-xs font-semibold text-white">Eşleştir</button>
+                    </>}
                   </div>
                 </div>
               ))}
@@ -732,6 +732,13 @@ function PaymentModal({
                 onSuccess={onSaved}
                 onCancel={() => setMatchingReceipt(null)}
               />
+            </div>
+          )}
+          {editingReceipt && (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+              <h3 className="mb-1 font-semibold">Fazla tahsilatı düzenle</h3>
+              <p className="mb-4 text-xs text-slate-500">Tutar, kasa, ödeme tarihi ve not değiştiğinde bağlı kasa hareketi de birlikte güncellenir.</p>
+              <UnallocatedReceiptEditForm receipt={editingReceipt} accounts={accounts} onSuccess={onSaved} onCancel={() => setEditingReceipt(null)} />
             </div>
           )}
         </div>

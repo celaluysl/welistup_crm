@@ -155,6 +155,29 @@ export async function classifyUnallocatedReceipt(
   return { success: "Fazla tahsilat hizmetle eşleştirildi." };
 }
 
+export async function updateUnallocatedReceipt(_: State, formData: FormData): Promise<State> {
+  const parsed = z.object({
+    receipt_id: z.string().uuid(),
+    account_id: z.string().uuid(),
+    amount: z.coerce.number().positive(),
+    received_date: z.string().date(),
+    notes: z.string().trim().max(1000).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Fazla tahsilat bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_unallocated_customer_receipt", {
+    p_receipt_id: parsed.data.receipt_id,
+    p_account_id: parsed.data.account_id,
+    p_amount: parsed.data.amount,
+    p_received_date: parsed.data.received_date,
+    p_notes: parsed.data.notes || null,
+  });
+  if (error) return { error: error.message.includes("receipt_already_classified") ? "Hizmetle eşleştirilmiş tahsilat değiştirilemez." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi tahsilatla aynı olmalı." : error.message.includes("period_closed") ? "Kapalı aya ait tahsilatı düzenlemek için önce ayı yeniden açın." : error.message };
+  revalidatePath("/collections");
+  revalidatePath("/transactions");
+  return { success: "Fazla tahsilat ve kasa hareketi güncellendi." };
+}
+
 export async function addCollectionActivity(
   _: State,
   formData: FormData,
