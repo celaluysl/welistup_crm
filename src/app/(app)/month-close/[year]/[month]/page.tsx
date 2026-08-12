@@ -88,9 +88,28 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
             <span className="mt-1 text-xs text-slate-500">Aktif {partnerRows.length} ortak</span>
           </div>
         </div>
-        <div className="grid border-t md:grid-cols-3">
-          {partnerRows.map((partner) => <div key={partner.name} className="border-b p-5 md:border-b-0 md:border-r last:border-r-0"><div className="font-semibold">{partner.name}</div><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500"><span>Sabit maaş</span><b className="text-right text-slate-700">{formatMoney(partner.salary)}</b><span>Dönem payı · %{partner.percent.toFixed(2)}</span><b className={`text-right ${partner.share < 0 ? "text-red-600" : "text-emerald-700"}`}>{formatMoney(partner.share)}</b></div><div className="mt-3 flex justify-between border-t pt-3 text-sm font-bold"><span>Toplam sonuç</span><span>{formatMoney(partner.total)}</span></div></div>)}
-          {!partnerRows.length && <p className="p-5 text-sm text-amber-700">Bu ay için aktif ortaklık oranı bulunamadı.</p>}
+        <div className="border-t bg-slate-50/60 p-5">
+          <div className="mb-4">
+            <h3 className="font-bold">Ortakların aylık gelirleri</h3>
+            <p className="mt-1 text-xs text-slate-500">Sabit maaş ile dönem sonucundan gelen ortaklık payı birlikte hesaplanır.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {partnerRows.map((partner) => (
+              <div key={partner.name} className="rounded-xl border bg-white p-5 shadow-sm">
+                <div className="text-base font-bold text-slate-900">{partner.name}</div>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex items-center justify-between"><span className="text-slate-500">Maaş</span><b>{formatMoney(partner.salary)}</b></div>
+                  <div className="flex items-center justify-between"><span className="text-slate-500">Ortaklık payı <small>· %{partner.percent.toFixed(2)}</small></span><b className={partner.share < 0 ? "text-red-600" : "text-emerald-700"}>{formatMoney(partner.share)}</b></div>
+                </div>
+                <div className={`mt-4 rounded-lg p-4 ${partner.total < 0 ? "bg-red-50" : "bg-emerald-50"}`}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Toplam gelir</div>
+                  <div className={`mt-1 text-xl font-bold ${partner.total < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatMoney(partner.total)}</div>
+                  <div className="mt-1 text-xs text-slate-400">Maaş + ortaklık payı</div>
+                </div>
+              </div>
+            ))}
+            {!partnerRows.length && <p className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-700 md:col-span-3">Bu ay için aktif ortaklık oranı bulunamadı.</p>}
+          </div>
         </div>
       </section>
 
