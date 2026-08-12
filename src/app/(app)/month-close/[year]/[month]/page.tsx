@@ -18,7 +18,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, accountsResult, balancesResult] = await Promise.all([
+  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, partnerProfilesResult, accountsResult, balancesResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
     s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
@@ -27,6 +27,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name)").lte("due_date", end).neq("status", "paid").neq("status", "cancelled"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
+    s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency").eq("status", "active").eq("employment_type", "partner").order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
     s.rpc("account_balances"),
   ]);
@@ -39,6 +40,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const payroll = (payrollResult.data || []) as Row[];
   const overdue = (overdueResult.data || []) as Row[];
   const ownerships = (ownershipResult.data || []) as Row[];
+  const partnerProfiles = (partnerProfilesResult.data || []) as Row[];
 
   const cashIncome = sum(transactions.filter((r) => r.transaction_type === "income"), "amount");
   const cashExpense = Math.abs(sum(transactions.filter((r) => r.transaction_type === "expense"), "amount"));
@@ -47,16 +49,23 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const vendorCost = sum(vendors, "amount");
   const payrollCost = sum(payroll, "net_payable");
   const operatingCost = manualCost + vendorCost;
-  const periodResult = cashIncome - operatingCost - payrollCost;
+  const totalPeriodCost = operatingCost + payrollCost;
+  const periodResult = accruedIncome - totalPeriodCost;
+  const cashResult = cashIncome - cashExpense;
   const overdueAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
   const invoiceWaiting = periods.filter((r) => r.invoice_status === "waiting").length;
   const collectionWaiting = periods.filter((r) => r.collection_status !== "paid").length;
   const partnerPayroll = new Map(payroll.filter((r) => r.employment_type === "partner").map((r) => [profileId(r.profiles), Number(r.net_payable || 0)]));
-  const partnerRows = ownerships.map((o) => {
-    const share = periodResult * Number(o.ownership_percent || 0) / 100;
-    const salary = partnerPayroll.get(String(o.profile_id)) || 0;
-    return { name: person(o.profiles), percent: Number(o.ownership_percent || 0), salary, share, total: salary + share };
+  const ownershipByProfile = new Map(ownerships.map((o) => [String(o.profile_id), o]));
+  const fallbackPercent = partnerProfiles.length ? 100 / partnerProfiles.length : 0;
+  const partnerRows = partnerProfiles.map((profile) => {
+    const ownership = ownershipByProfile.get(String(profile.id));
+    const percent = ownership ? Number(ownership.ownership_percent || 0) : fallbackPercent;
+    const share = periodResult * percent / 100;
+    const salary = partnerPayroll.get(String(profile.id)) ?? Number(profile.base_salary || 0);
+    return { id: String(profile.id), name: person(profile), percent, salary, share, total: salary + share, isFallback: !ownership };
   });
+  const ownershipTotal = partnerRows.reduce((total, partner) => total + partner.percent, 0);
   const balances = new Map(((balancesResult.data || []) as Row[]).map((b) => [String(b.account_id), Number(b.balance || 0)]));
   const accountRows = ((accountsResult.data || []) as Row[]).map((a) => ({ name: String(a.name), balance: balances.get(String(a.id)) || 0, type: a.billing_preference }));
   const title = new Intl.DateTimeFormat("tr-TR", { year: "numeric", month: "long" }).format(new Date(year, month - 1));
@@ -75,17 +84,17 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       </div>
 
       <section className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Tahsil edilen gelir esas alınır; gider ve maaşlar ilgili aya ait tahakkuklardan hesaplanır.</p></div>
+        <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Dönem sonucu, aynı aya ait tahakkuk eden gelir ve giderlerden hesaplanır. Gerçek kasa hareketi ayrıca gösterilir.</p></div>
         <div className="grid divide-y lg:grid-cols-[1fr_260px] lg:divide-x lg:divide-y-0">
           <div className="divide-y">
-            <ResultRow label="Bu ay tahsil edilen gelir" value={cashIncome} tone="green" hint={`Aylık tahakkuk: ${formatMoney(accruedIncome)}`} />
-            <ResultRow label="Gider + maaş toplamı" value={operatingCost + payrollCost} tone="blue" hint={`Operasyon ${formatMoney(operatingCost)} · Maaş ${formatMoney(payrollCost)}`} />
-            <ResultRow label="Ortaklara kalan toplam tutar" value={periodResult} tone={periodResult >= 0 ? "green" : "red"} strong />
+            <ResultRow label="Bu ayın tahakkuk eden geliri" value={accruedIncome} tone="green" hint={`${periods.length} hizmet dönemi · Bu ay kasaya giren ${formatMoney(cashIncome)}`} />
+            <ResultRow label="Bu aya ait gider + maaş toplamı" value={totalPeriodCost} tone="blue" hint={`Manuel gider ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)} · Maaş ${formatMoney(payrollCost)}`} />
+            <ResultRow label="Ortaklara kalan dönem sonucu" value={periodResult} tone={periodResult >= 0 ? "green" : "red"} hint="Tahakkuk eden gelir − bu aya ait giderler − maaşlar" strong />
           </div>
           <div className={`flex flex-col justify-center p-6 ${periodResult >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kişi başı eşit pay</span>
             <b className={`mt-2 text-2xl ${periodResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatMoney(partnerRows.length ? periodResult / partnerRows.length : 0)}</b>
-            <span className="mt-1 text-xs text-slate-500">Aktif {partnerRows.length} ortak</span>
+            <span className="mt-1 text-xs text-slate-500">Aktif {partnerRows.length} ortak · Toplam oran %{ownershipTotal.toFixed(2)}</span>
           </div>
         </div>
         <div className="border-t bg-slate-50/60 p-5">
@@ -95,7 +104,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {partnerRows.map((partner) => (
-              <div key={partner.name} className="rounded-xl border bg-white p-5 shadow-sm">
+              <div key={partner.id} className="rounded-xl border bg-white p-5 shadow-sm">
                 <div className="text-base font-bold text-slate-900">{partner.name}</div>
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex items-center justify-between"><span className="text-slate-500">Maaş</span><b>{formatMoney(partner.salary)}</b></div>
@@ -110,14 +119,20 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
             ))}
             {!partnerRows.length && <p className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-700 md:col-span-3">Bu ay için aktif ortaklık oranı bulunamadı.</p>}
           </div>
+          {partnerRows.some((partner) => partner.isFallback) && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Bazı ortakların bu ay için dönemsel ortaklık kaydı bulunamadığı için oranlar aktif ortaklar arasında eşit kabul edildi. Kalıcı oranları Yönetim → Ortaklar ekranından doğrulayabilirsiniz.</p>}
         </div>
       </section>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Bekleyen fatura" value={`${invoiceWaiting} kayıt`} warning={invoiceWaiting > 0} />
-        <Metric label="Bekleyen tahsilat" value={`${collectionWaiting} kayıt`} warning={collectionWaiting > 0} />
+        <Metric label="Bu ay kasaya giren" value={formatMoney(cashIncome)} />
+        <Metric label="Bu ay kasadan çıkan" value={formatMoney(cashExpense)} />
+        <Metric label="Net kasa hareketi" value={formatMoney(cashResult)} warning={cashResult < 0} />
         <Metric label="Vadesi geçmiş alacak" value={formatMoney(overdueAmount)} warning={overdueAmount > 0} />
-        <Metric label="Ay içi kasa çıkışı" value={formatMoney(cashExpense)} />
+      </div>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <Metric label="Bekleyen fatura kontrolü" value={`${invoiceWaiting} kayıt`} warning={invoiceWaiting > 0} />
+        <Metric label="Bekleyen tahsilat kontrolü" value={`${collectionWaiting} kayıt`} warning={collectionWaiting > 0} />
       </div>
 
       <div className="mb-6 grid gap-5 xl:grid-cols-2">
