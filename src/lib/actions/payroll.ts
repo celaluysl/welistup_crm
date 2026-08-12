@@ -83,6 +83,17 @@ export async function payPayroll(_: State, fd: FormData): Promise<State> {
   revalidatePath("/transactions");
   return { success: "Maaş ödemesi kasaya işlendi." };
 }
+export async function updatePayrollPayment(_: State, fd: FormData): Promise<State> {
+  const p = z.object({ payment_id: z.string().uuid(), account_id: z.string().uuid(), amount: z.coerce.number().positive(), payment_date: z.string().date(), notes: z.string().trim().max(1000).optional() }).safeParse(Object.fromEntries(fd));
+  if (!p.success) return { error: "Ödeme bilgilerini kontrol edin." };
+  const s = await createClient();
+  const { error } = await s.rpc("update_payroll_payment", { p_payment_id: p.data.payment_id, p_account_id: p.data.account_id, p_amount: p.data.amount, p_payment_date: p.data.payment_date, p_notes: p.data.notes || null });
+  if (error) return { error: error.message.includes("period_closed") ? "Kapalı aya ait ödemeyi değiştirmek için önce ayı yeniden açın." : error.message.includes("invalid_payment_amount") ? "Tutar, kalan maaş borcunu aşamaz." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi maaşla aynı olmalı." : error.message };
+  revalidatePath("/payroll");
+  revalidatePath("/accounts");
+  revalidatePath("/transactions");
+  return { success: "Maaş ödemesi ve kasa hareketi güncellendi." };
+}
 export async function goToPayrollPeriod(fd: FormData) {
   redirect(`/payroll?year=${fd.get("year")}&month=${fd.get("month")}`);
 }

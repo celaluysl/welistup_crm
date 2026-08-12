@@ -4,6 +4,7 @@ import {
   createSalaryConfig,
   generatePayroll,
   payPayroll,
+  updatePayrollPayment,
 } from "@/lib/actions/payroll";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -156,6 +157,20 @@ export function PayrollPaymentForm({
       </div>
     </form>
   );
+}
+
+export function PayrollPaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCancel }: { payment: { id: string; amount: number; paymentDate: string; accountId: string; notes: string | null }; maxAmount: number; accounts: Account[]; onSuccess: () => void; onCancel: () => void }) {
+  const [state, action, pending] = useActionState(updatePayrollPayment, null);
+  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
+  return <form action={action} className="grid gap-3 sm:grid-cols-2">
+    <input type="hidden" name="payment_id" value={payment.id}/>
+    <Field label="Tutar"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required defaultValue={payment.amount} className={inputClass}/></Field>
+    <Field label="Kasa"><select name="account_id" required defaultValue={payment.accountId} className={inputClass}><option value="">Seçin</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></Field>
+    <Field label="Ödeme tarihi"><input name="payment_date" type="date" required defaultValue={payment.paymentDate} className={inputClass}/></Field>
+    <Field label="Not"><input name="notes" defaultValue={payment.notes || ""} className={inputClass}/></Field>
+    <Result state={state}/>
+    <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Ödemeyi güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
+  </form>;
 }
 function Result({
   state,

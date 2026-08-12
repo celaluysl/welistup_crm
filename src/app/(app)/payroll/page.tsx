@@ -113,6 +113,7 @@ export default async function Payroll({
         id: payment.id,
         amount: Number(payment.amount),
         paymentDate: payment.payment_date,
+        accountId: payment.account_id,
         accountName: accountsById.get(payment.account_id)?.name || null,
         notes: payment.notes,
       })),

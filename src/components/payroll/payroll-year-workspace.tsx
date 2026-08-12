@@ -1,8 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, X } from "lucide-react";
-import { PayrollPaymentForm } from "@/components/forms/payroll-forms";
+import { CalendarDays, Pencil, X } from "lucide-react";
+import { PayrollPaymentEditForm, PayrollPaymentForm } from "@/components/forms/payroll-forms";
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
 
@@ -20,6 +20,7 @@ export type PayrollYearRow = {
     id: string;
     amount: number;
     paymentDate: string;
+    accountId: string;
     accountName: string | null;
     notes: string | null;
   }[];
@@ -216,6 +217,7 @@ function PayrollDialog({
   onSaved: () => void;
 }) {
   const remaining = Math.max(0, row.salary - row.paid);
+  const [editingPayment, setEditingPayment] = useState<PayrollYearRow["payments"][number] | null>(null);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
@@ -284,7 +286,10 @@ function PayrollDialog({
                       {payment.notes ? ` · ${payment.notes}` : ""}
                     </div>
                   </div>
-                  <b>{formatMoney(payment.amount, row.currency)}</b>
+                  <div className="flex items-center gap-3">
+                    <b>{formatMoney(payment.amount, row.currency)}</b>
+                    <button type="button" title="Maaş ödemesini düzenle" onClick={() => setEditingPayment(payment)} className="rounded-md border border-slate-200 bg-white p-2 text-slate-500 hover:border-red-200 hover:text-[#CD0B16]"><Pencil size={14}/></button>
+                  </div>
                 </div>
               ))}
               {!row.payments.length && (
@@ -293,6 +298,7 @@ function PayrollDialog({
                 </div>
               )}
             </div>
+            {editingPayment && <div className="mt-4 rounded-xl border border-red-100 bg-red-50/30 p-4"><h3 className="mb-4 font-semibold">Maaş ödemesini düzenle</h3><PayrollPaymentEditForm payment={editingPayment} maxAmount={remaining + editingPayment.amount} accounts={accounts} onSuccess={onSaved} onCancel={() => setEditingPayment(null)}/></div>}
           </div>
         </div>
       </section>
