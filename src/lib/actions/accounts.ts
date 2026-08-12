@@ -131,5 +131,6 @@ export async function transferAccounts(_: State, fd: FormData): Promise<State> {
     };
   revalidatePath("/accounts");
   revalidatePath("/transactions");
+  revalidatePath("/expenses");
   return { success: "Transfer çift taraflı olarak kaydedildi." };
 }

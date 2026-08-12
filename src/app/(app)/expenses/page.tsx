@@ -23,7 +23,7 @@ export default async function Expenses({
   await s.rpc("generate_recurring_manual_expenses", {
     p_until: `${year}-12-31`,
   });
-  const [vendorResult, definitionResult, manualResult, accountResult] = await Promise.all([
+  const [vendorResult, definitionResult, manualResult, accountResult, transactionResult] = await Promise.all([
     s
       .from("vendor_accruals")
       .select(
@@ -54,7 +54,30 @@ export default async function Expenses({
       .select("id,name,currency,billing_preference")
       .eq("status", "active")
       .order("name"),
+    s
+      .from("finance_transactions")
+      .select("account_id,transaction_date,transaction_type,amount")
+      .gte("transaction_date", `${year}-01-01`)
+      .lte("transaction_date", `${year}-12-31`),
   ]);
+  const accountNames = billing === "invoiced"
+    ? { source: "Şirket Tahsilat Kasası", target: "Şirket Gider Kasası", label: "Faturalı gider kasası" }
+    : { source: "Faturasız Tahsilat Kasası", target: "Faturasız Gider Kasası", label: "Faturasız gider kasası" };
+  const sourceAccount = (accountResult.data || []).find((account) => account.name === accountNames.source);
+  const targetAccount = (accountResult.data || []).find((account) => account.name === accountNames.target);
+  const replenishments = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const monthTransactions = (transactionResult.data || []).filter((transaction) =>
+      transaction.account_id === targetAccount?.id && Number(String(transaction.transaction_date).slice(5, 7)) === month,
+    );
+    const spent = monthTransactions
+      .filter((transaction) => transaction.transaction_type === "expense")
+      .reduce((total, transaction) => total + Math.abs(Number(transaction.amount || 0)), 0);
+    const replenished = monthTransactions
+      .filter((transaction) => transaction.transaction_type === "transfer" && Number(transaction.amount || 0) > 0)
+      .reduce((total, transaction) => total + Number(transaction.amount || 0), 0);
+    return { month, spent, replenished, remaining: Math.max(0, spent - replenished) };
+  });
   const rows: ExpenseRow[] = [
     ...(vendorResult.data || []).map((r) => ({
       id: r.id,
@@ -112,7 +135,10 @@ export default async function Expenses({
       requiresReview: false,
     })),
   ];
-  const definitions: ExpenseDefinition[] = (definitionResult.data || []).map(
+  const systemCashLabels = ["faturalı kasa", "faturasız kasa", "faturalı gider kasası", "faturasız gider kasası"];
+  const definitions: ExpenseDefinition[] = (definitionResult.data || []).filter(
+    (definition) => !systemCashLabels.includes(String(definition.name).trim().toLocaleLowerCase("tr-TR")),
+  ).map(
     (definition) => ({
       id: definition.id,
       name: definition.name,
@@ -131,7 +157,8 @@ export default async function Expenses({
     vendorResult.error ||
     manualResult.error ||
     definitionResult.error ||
-    accountResult.error;
+    accountResult.error ||
+    transactionResult.error;
   return (
     <>
       <PageHeader
@@ -186,6 +213,12 @@ export default async function Expenses({
           rows={rows}
           definitions={definitions}
           accounts={accountResult.data || []}
+          replenishment={{
+            label: accountNames.label,
+            sourceAccount: sourceAccount || null,
+            targetAccount: targetAccount || null,
+            months: replenishments,
+          }}
           year={year}
           billing={billing}
         />
