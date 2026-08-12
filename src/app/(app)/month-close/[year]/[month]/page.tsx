@@ -18,7 +18,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, partnerProfilesResult, accountsResult, balancesResult] = await Promise.all([
+  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balancesResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
     s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
@@ -27,7 +27,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name)").lte("due_date", end).neq("status", "paid").neq("status", "cancelled"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
-    s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency").eq("status", "active").eq("employment_type", "partner").order("first_name"),
+    s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
     s.rpc("account_balances"),
   ]);
@@ -40,17 +40,19 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const payroll = (payrollResult.data || []) as Row[];
   const overdue = (overdueResult.data || []) as Row[];
   const ownerships = (ownershipResult.data || []) as Row[];
-  const partnerProfiles = (partnerProfilesResult.data || []) as Row[];
+  const salaryProfiles = (salaryProfilesResult.data || []) as Row[];
+  const partnerProfiles = salaryProfiles.filter((profile) => profile.employment_type === "partner");
 
   const cashIncome = sum(transactions.filter((r) => r.transaction_type === "income"), "amount");
   const cashExpense = Math.abs(sum(transactions.filter((r) => r.transaction_type === "expense"), "amount"));
   const accruedIncome = sum(periods, "gross_amount");
   const manualCost = sum(expenses, "amount");
   const vendorCost = sum(vendors, "amount");
-  const payrollCost = sum(payroll, "net_payable");
+  const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
+  const payrollCost = salaryProfiles.reduce((total, profile) => total + (payrollByProfile.get(String(profile.id)) ?? Number(profile.base_salary || 0)), 0);
   const operatingCost = manualCost + vendorCost;
   const totalPeriodCost = operatingCost + payrollCost;
-  const periodResult = accruedIncome - totalPeriodCost;
+  const periodResult = cashIncome - totalPeriodCost;
   const cashResult = cashIncome - cashExpense;
   const overdueAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
   const invoiceWaiting = periods.filter((r) => r.invoice_status === "waiting").length;
@@ -84,12 +86,12 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       </div>
 
       <section className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Dönem sonucu, aynı aya ait tahakkuk eden gelir ve giderlerden hesaplanır. Gerçek kasa hareketi ayrıca gösterilir.</p></div>
+        <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Kapanış sonucu, bu ay gerçekten tahsil edilen gelirden aya ait giderler ve tüm aktif maaşlar düşülerek hesaplanır.</p></div>
         <div className="grid divide-y lg:grid-cols-[1fr_260px] lg:divide-x lg:divide-y-0">
           <div className="divide-y">
-            <ResultRow label="Bu ayın tahakkuk eden geliri" value={accruedIncome} tone="green" hint={`${periods.length} hizmet dönemi · Bu ay kasaya giren ${formatMoney(cashIncome)}`} />
+            <ResultRow label="Bu ay tahsil edilen gelir" value={cashIncome} tone="green" hint={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi · Hizmet tahakkuku ${formatMoney(accruedIncome)}`} />
             <ResultRow label="Bu aya ait gider + maaş toplamı" value={totalPeriodCost} tone="blue" hint={`Manuel gider ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)} · Maaş ${formatMoney(payrollCost)}`} />
-            <ResultRow label="Ortaklara kalan dönem sonucu" value={periodResult} tone={periodResult >= 0 ? "green" : "red"} hint="Tahakkuk eden gelir − bu aya ait giderler − maaşlar" strong />
+            <ResultRow label="Ortaklara kalan dönem sonucu" value={periodResult} tone={periodResult >= 0 ? "green" : "red"} hint="Tahsil edilen gelir − bu aya ait giderler − tüm aktif maaşlar" strong />
           </div>
           <div className={`flex flex-col justify-center p-6 ${periodResult >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kişi başı eşit pay</span>
