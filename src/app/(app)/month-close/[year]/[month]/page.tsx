@@ -20,15 +20,16 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
   const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balancesResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
-    s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(name),projects(name),services(name)").eq("year", year).eq("month", month),
+    s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(company_name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("receivables")
-      .select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name),service_periods!inner(year,month)")
+      .select("id,total_amount,status,due_date,payments(amount),clients(company_name),projects(name),service_periods!inner(year,month)")
       .neq("status", "paid")
-      .or(`year.lt.${year},and(year.eq.${year},month.lte.${month})`, { referencedTable: "service_periods" }),
+      .eq("service_periods.year", year)
+      .eq("service_periods.month", month),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
@@ -181,7 +182,7 @@ function Metric({ label, value, warning }: { label: string; value: string; warni
 function ReviewTable({ title, subtitle, rows, empty }: { title: string; subtitle: string; rows: { title: string; detail: string; amount: number }[]; empty: string }) { return <Card className="overflow-hidden"><div className="flex items-end justify-between border-b bg-slate-50 px-5 py-4"><div><h2 className="font-bold">{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><b>{formatMoney(rows.reduce((n, r) => n + r.amount, 0))}</b></div><div className="max-h-80 divide-y overflow-y-auto">{rows.map((r, i) => <div key={`${r.title}-${i}`} className="flex items-center justify-between gap-4 px-5 py-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{r.title}</div><div className="mt-0.5 truncate text-xs text-slate-400">{r.detail}</div></div><b className="shrink-0 text-sm">{formatMoney(r.amount)}</b></div>)}{!rows.length && <p className="p-6 text-center text-sm text-slate-400">{empty}</p>}</div></Card>; }
 function sum(rows: Row[], field: string) { return rows.reduce((n, r) => n + Number(r[field] || 0), 0); }
 function nestedSum(value: unknown) { return Array.isArray(value) ? value.reduce((n, r) => n + Number((r as Row).amount || 0), 0) : 0; }
-function relationName(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.name || "—"); }
+function relationName(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.company_name || v?.name || "—"); }
 function profileId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
 function person(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return `${v?.first_name || ""} ${v?.last_name || ""}`.trim() || "Ortak"; }
 function date(value: unknown) { return value ? new Date(String(value)).toLocaleDateString("tr-TR") : "—"; }
