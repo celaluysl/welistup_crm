@@ -42,6 +42,7 @@ export async function generateYearPeriods(
     created += Number(data || 0);
   }
   revalidatePath("/collections");
+  revalidatePath("/month-close", "layout");
   return { success: `${created} yeni aylık tahsilat kaydı oluşturuldu.` };
 }
 
@@ -64,6 +65,7 @@ export async function updateVariableServicePeriod(
   if (error) return { error: error.message.includes("payments_exceed_new_total") ? "Yeni tutar, daha önce tahsil edilen tutardan düşük olamaz." : error.message };
   revalidatePath("/operations");
   revalidatePath("/collections");
+  revalidatePath("/month-close", "layout");
   return { success: "Bu aya ait iş ve tutar güncellendi." };
 }
 
@@ -102,6 +104,7 @@ export async function recordPayment(
           : error.message,
     };
   revalidatePath("/collections");
+  revalidatePath("/month-close", "layout");
   revalidatePath(`/collections/${parsed.data.receivable_id}`);
   return { success: "Ödeme kaydedildi." };
 }
@@ -128,6 +131,7 @@ export async function updatePayment(
   });
   if (error) return { error: error.message.includes("invalid_payment_amount") ? "Tutar toplam alacağı aşamaz." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi ödeme ile aynı olmalı." : error.message };
   revalidatePath("/collections");
+  revalidatePath("/month-close", "layout");
   return { success: "Ödeme güncellendi." };
 }
 

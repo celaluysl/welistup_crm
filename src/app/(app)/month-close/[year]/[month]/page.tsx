@@ -25,7 +25,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name)").lte("due_date", end).neq("status", "paid").neq("status", "cancelled"),
+    s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name)").lte("due_date", end).neq("status", "paid"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
