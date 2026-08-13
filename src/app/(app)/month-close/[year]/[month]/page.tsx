@@ -49,7 +49,20 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const manualCost = sum(expenses, "amount");
   const vendorCost = sum(vendors, "amount");
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
+  const payrollRowsByProfile = new Map(payroll.map((row) => [profileId(row.profiles), row]));
   const payrollCost = salaryProfiles.reduce((total, profile) => total + (payrollByProfile.get(String(profile.id)) ?? Number(profile.base_salary || 0)), 0);
+  const salaryRows = salaryProfiles.map((profile) => {
+    const payrollRow = payrollRowsByProfile.get(String(profile.id));
+    const employmentType = String(profile.employment_type) === "partner" ? "Ortak" : "Çalışan";
+    const paid = payrollRow ? nestedSum(payrollRow.payroll_payments) : 0;
+    return {
+      title: person(profile),
+      detail: payrollRow
+        ? `${employmentType} · ${statusLabel(String(payrollRow.status))} · Ödenen ${formatMoney(paid)}`
+        : `${employmentType} · Dönem kaydı oluşturulmadı · Ödenen ${formatMoney(0)}`,
+      amount: payrollRow ? Number(payrollRow.net_payable || 0) : Number(profile.base_salary || 0),
+    };
+  });
   const operatingCost = manualCost + vendorCost;
   const totalPeriodCost = operatingCost + payrollCost;
   const periodResult = cashIncome - totalPeriodCost;
@@ -140,7 +153,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       <div className="mb-6 grid gap-5 xl:grid-cols-2">
         <ReviewTable title="Gelir ve tahsilatlar" subtitle={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi`} rows={transactions.filter((r) => r.transaction_type === "income").map((r) => ({ title: String(r.description || r.category || "Tahsilat"), detail: `${date(r.transaction_date)} · ${relationName(r.accounts)}`, amount: Number(r.amount || 0) }))} empty="Bu ay tahsilat kaydı yok." />
         <ReviewTable title="Gider tahakkukları" subtitle={`Manuel ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)}`} rows={[...expenses.map((r) => ({ title: String(r.name), detail: `${r.category} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) })), ...vendors.map((r) => ({ title: relationName(r.vendors), detail: `${relationName(r.projects)} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) }))]} empty="Bu ay gider tahakkuku yok." />
-        <ReviewTable title="Maaşlar" subtitle={`${payroll.length} maaş kaydı`} rows={payroll.map((r) => ({ title: person(r.profiles), detail: `${r.employment_type === "partner" ? "Ortak" : "Çalışan"} · ${statusLabel(String(r.status))} · Ödenen ${formatMoney(nestedSum(r.payroll_payments))}`, amount: Number(r.net_payable || 0) }))} empty="Bu ay maaş kaydı yok." />
+        <ReviewTable title="Maaşlar" subtitle={`${payroll.length} dönem kaydı · ${salaryProfiles.length} aktif maaş`} rows={salaryRows} empty="Aktif maaş profili bulunamadı." />
         <ReviewTable title="Gecikmiş ve açık alacaklar" subtitle={`${overdue.length} kayıt`} rows={overdue.slice(0, 12).map((r) => ({ title: relationName(r.clients), detail: `${relationName(r.projects)} · Vade ${date(r.due_date)}`, amount: Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)) }))} empty="Gecikmiş açık alacak yok." />
       </div>
 

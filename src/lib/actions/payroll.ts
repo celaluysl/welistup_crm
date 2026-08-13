@@ -34,6 +34,7 @@ export async function createSalaryConfig(
   });
   if (generationError) return { error: generationError.message };
   revalidatePath("/payroll");
+  revalidatePath("/month-close", "layout");
   return { success: "Sabit maaş tanımlandı ve aylık maaş kaydı oluşturuldu." };
 }
 export async function generatePayroll(_: State, fd: FormData): Promise<State> {
@@ -51,6 +52,7 @@ export async function generatePayroll(_: State, fd: FormData): Promise<State> {
   });
   if (error) return { error: error.message };
   revalidatePath("/payroll");
+  revalidatePath("/month-close", "layout");
   return { success: `${data ?? 0} maaş kaydı oluşturuldu.` };
 }
 export async function payPayroll(_: State, fd: FormData): Promise<State> {
@@ -81,6 +83,7 @@ export async function payPayroll(_: State, fd: FormData): Promise<State> {
   revalidatePath("/payroll");
   revalidatePath("/accounts");
   revalidatePath("/transactions");
+  revalidatePath("/month-close", "layout");
   return { success: "Maaş ödemesi kasaya işlendi." };
 }
 export async function updatePayrollPayment(_: State, fd: FormData): Promise<State> {
@@ -92,6 +95,7 @@ export async function updatePayrollPayment(_: State, fd: FormData): Promise<Stat
   revalidatePath("/payroll");
   revalidatePath("/accounts");
   revalidatePath("/transactions");
+  revalidatePath("/month-close", "layout");
   return { success: "Maaş ödemesi ve kasa hareketi güncellendi." };
 }
 export async function goToPayrollPeriod(fd: FormData) {
