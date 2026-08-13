@@ -25,7 +25,10 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name)").lte("due_date", end).neq("status", "paid"),
+    s.from("receivables")
+      .select("id,total_amount,status,due_date,payments(amount),clients(name),projects(name),service_periods!inner(year,month)")
+      .neq("status", "paid")
+      .or(`year.lt.${year},and(year.eq.${year},month.lte.${month})`, { referencedTable: "service_periods" }),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
@@ -67,7 +70,10 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const totalPeriodCost = operatingCost + payrollCost;
   const periodResult = cashIncome - totalPeriodCost;
   const cashResult = cashIncome - cashExpense;
-  const overdueAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
+  const openAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
+  const overdueAmount = overdue
+    .filter((r) => String(r.due_date || "") <= end)
+    .reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
   const invoiceWaiting = periods.filter((r) => r.invoice_status === "waiting").length;
   const collectionWaiting = periods.filter((r) => r.collection_status !== "paid").length;
   const partnerPayroll = new Map(payroll.filter((r) => r.employment_type === "partner").map((r) => [profileId(r.profiles), Number(r.net_payable || 0)]));
@@ -154,7 +160,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         <ReviewTable title="Gelir ve tahsilatlar" subtitle={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi`} rows={transactions.filter((r) => r.transaction_type === "income").map((r) => ({ title: String(r.description || r.category || "Tahsilat"), detail: `${date(r.transaction_date)} · ${relationName(r.accounts)}`, amount: Number(r.amount || 0) }))} empty="Bu ay tahsilat kaydı yok." />
         <ReviewTable title="Gider tahakkukları" subtitle={`Manuel ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)}`} rows={[...expenses.map((r) => ({ title: String(r.name), detail: `${r.category} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) })), ...vendors.map((r) => ({ title: relationName(r.vendors), detail: `${relationName(r.projects)} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) }))]} empty="Bu ay gider tahakkuku yok." />
         <ReviewTable title="Maaşlar" subtitle={`${payroll.length} dönem kaydı · ${salaryProfiles.length} aktif maaş`} rows={salaryRows} empty="Aktif maaş profili bulunamadı." />
-        <ReviewTable title="Gecikmiş ve açık alacaklar" subtitle={`${overdue.length} kayıt`} rows={overdue.slice(0, 12).map((r) => ({ title: relationName(r.clients), detail: `${relationName(r.projects)} · Vade ${date(r.due_date)}`, amount: Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)) }))} empty="Gecikmiş açık alacak yok." />
+        <ReviewTable title="Ödenmemiş ve açık alacaklar" subtitle={`${overdue.length} kayıt · Açık toplam ${formatMoney(openAmount)}`} rows={overdue.map((r) => ({ title: relationName(r.clients), detail: `${relationName(r.projects)} · Vade ${date(r.due_date)} · ${statusLabel(String(r.status))}`, amount: Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)) }))} empty="Ödenmemiş açık alacak yok." />
       </div>
 
       <Card className="mb-6 p-6"><div className="mb-4 flex items-end justify-between"><div><h2 className="font-bold">Kasa mutabakatı</h2><p className="mt-1 text-xs text-slate-500">Tüm hareketlerden sonraki güncel kasa bakiyeleri.</p></div><b className="text-lg">{formatMoney(accountRows.reduce((n, a) => n + a.balance, 0))}</b></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{accountRows.map((a) => <div key={a.name} className={`rounded-xl border p-4 ${a.type === "invoiced" ? "bg-blue-50/60" : "bg-orange-50/60"}`}><div className="text-xs text-slate-500">{a.name}</div><b className="mt-1 block">{formatMoney(a.balance)}</b></div>)}</div></Card>
