@@ -25,15 +25,20 @@ export function StandaloneProformaForm({ clients, services, initial }: { clients
   const total = values.items.reduce((sum, item) => { const net = Number(item.quantity || 0) * Number(item.unit_price || 0) * (1 - Number(item.discount_rate || 0) / 100); return sum + net * (1 + Number(item.vat_rate || 0) / 100); }, 0);
   const serviceName = (id: string) => services.find((service) => service.id === id)?.name || "";
   const isOther = (id: string) => serviceName(id).trim().toLocaleLowerCase("tr-TR") === "diğer";
+  const changeClientMode = (mode: "existing" | "manual") => {
+    setClientMode(mode);
+    setValue("client_mode", mode, { shouldDirty: true, shouldValidate: true });
+    setError("");
+  };
 
   return <form onSubmit={handleSubmit((value) => start(async () => { setError(""); const result = initial ? await updateStandaloneProforma({ ...value, proforma_id: initial.id }) : await createStandaloneProforma(value); if (result?.error) setError(result.error); }))} className="space-y-6">
-    <input type="hidden" {...register("client_mode")} value={clientMode} />
+    <input type="hidden" {...register("client_mode")} />
     <div className="rounded-xl border border-slate-200 p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="font-semibold">Müşteri bilgileri</h2><p className="mt-1 text-xs text-slate-500">Kayıtlı bir müşteriyi seçin veya bilgileri yalnızca bu proforma için girin.</p></div>
         <div className="flex rounded-lg bg-slate-100 p-1">
-          <button type="button" onClick={() => setClientMode("existing")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Kayıtlı müşteri</button>
-          <button type="button" onClick={() => setClientMode("manual")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "manual" ? "bg-white text-[#CD0B16] shadow-sm" : "text-slate-500"}`}>Manuel müşteri</button>
+          <button type="button" onClick={() => changeClientMode("existing")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "existing" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Kayıtlı müşteri</button>
+          <button type="button" onClick={() => changeClientMode("manual")} className={`rounded-md px-4 py-2 text-sm font-medium ${clientMode === "manual" ? "bg-white text-[#CD0B16] shadow-sm" : "text-slate-500"}`}>Manuel müşteri</button>
         </div>
       </div>
       {clientMode === "existing" ? <Field label="Müşteri"><select required {...register("client_id")} className={inputClass}><option value="">Müşteri seçin</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}</select></Field> : <div className="grid gap-4 sm:grid-cols-2">
