@@ -2,6 +2,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/utils";
+import { companyProfile } from "@/lib/company-profile";
 import { PrintButton } from "@/components/ui/print-button";
 export default async function ProformaDetail({
   params,
@@ -55,6 +56,22 @@ export default async function ProformaDetail({
             <dt className="text-slate-400">Para birimi</dt>
             <dd>{p.currency}</dd>
           </dl>
+        </section>
+        <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+          <div className="text-xs font-bold uppercase text-slate-400">
+            Düzenleyen / Hizmet sağlayıcı
+          </div>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
+            <div>
+              <div className="font-semibold">{companyProfile.legalName}</div>
+              <div className="mt-1 text-slate-600">
+                {companyProfile.taxOffice} Vergi Dairesi · VKN {companyProfile.taxNumber}
+              </div>
+            </div>
+            <address className="not-italic leading-6 text-slate-600">
+              {companyProfile.address}
+            </address>
+          </div>
         </section>
         <table className="mt-10 w-full text-sm">
           <thead>
