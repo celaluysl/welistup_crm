@@ -23,56 +23,72 @@ export default async function ProformaDetail({
         <PrintButton />
       </div>
       <article className="mx-auto min-h-[297mm] max-w-[210mm] bg-white p-[16mm] text-slate-900 shadow-sm print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
-        <header className="flex items-start justify-between border-b-2 border-[#CD0B16] pb-6">
-          <Image src="/logo.svg" alt="Welistup" width={170} height={53} />
-          <div className="text-right">
-            <h1 className="text-2xl font-bold text-[#CD0B16]">
-              PROFORMA FATURA
-            </h1>
-            <p className="mt-1 text-xs font-bold">MALİ BELGE DEĞİLDİR</p>
-            <p className="mt-4 text-sm font-semibold">{p.proforma_number}</p>
-          </div>
-        </header>
-        <section className="mt-8 grid grid-cols-2 gap-8 text-sm">
-          <div>
-            <div className="text-xs font-bold uppercase text-slate-400">
-              Müşteri
+        <header className="border-b-2 border-[#CD0B16] pb-8">
+          <div className="grid gap-x-12 gap-y-7 sm:grid-cols-2 print:grid-cols-2">
+            <Image src="/logo.svg" alt="Welistup" width={170} height={53} />
+            <div className="text-left sm:text-right print:text-right">
+              <h1 className="text-2xl font-bold text-[#CD0B16]">
+                PROFORMA FATURA
+              </h1>
+              <p className="mt-1 text-xs font-bold">MALİ BELGE DEĞİLDİR</p>
+              <p className="mt-4 text-sm font-semibold">{p.proforma_number}</p>
             </div>
-            <div className="mt-2 text-lg font-semibold">
-              {p.customer_legal_name || p.customer_name || p.clients?.legal_name || p.clients?.company_name}
-            </div>
-            <div className="mt-1 whitespace-pre-line text-slate-500">
-              {p.customer_address || p.clients?.address}
-            </div>
-            <div className="mt-1 text-slate-500">
-              {p.customer_tax_office || p.clients?.tax_office} {p.customer_tax_number || p.clients?.tax_number}
-            </div>
-          </div>
-          <dl className="grid grid-cols-2 gap-2 text-right">
-            <dt className="text-slate-400">Tarih</dt>
-            <dd>{p.issue_date}</dd>
-            <dt className="text-slate-400">Geçerlilik</dt>
-            <dd>{p.valid_until || "—"}</dd>
-            <dt className="text-slate-400">Para birimi</dt>
-            <dd>{p.currency}</dd>
-          </dl>
-        </section>
-        <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-          <div className="text-xs font-bold uppercase text-slate-400">
-            Düzenleyen / Hizmet sağlayıcı
-          </div>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-            <div>
-              <div className="font-semibold">{companyProfile.legalName}</div>
-              <div className="mt-1 text-slate-600">
-                {companyProfile.taxOffice} Vergi Dairesi · VKN {companyProfile.taxNumber}
+
+            <div className="text-sm">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Düzenleyen
+              </div>
+              <div className="mt-2 text-base font-semibold">
+                {companyProfile.legalName}
+              </div>
+              <address className="mt-2 whitespace-pre-line not-italic leading-5 text-slate-600">
+                {companyProfile.address}
+              </address>
+              <div className="mt-2 leading-5 text-slate-600">
+                {companyProfile.taxOffice} Vergi Dairesi
+                <br />
+                VKN {companyProfile.taxNumber}
               </div>
             </div>
-            <address className="not-italic leading-6 text-slate-600">
-              {companyProfile.address}
-            </address>
+
+            <div className="text-sm">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Müşteri
+              </div>
+              <div className="mt-2 text-base font-semibold">
+                {p.customer_legal_name ||
+                  p.customer_name ||
+                  p.clients?.legal_name ||
+                  p.clients?.company_name}
+              </div>
+              {(p.customer_address || p.clients?.address) && (
+                <div className="mt-2 whitespace-pre-line leading-5 text-slate-600">
+                  {p.customer_address || p.clients?.address}
+                </div>
+              )}
+              {(p.customer_tax_office ||
+                p.clients?.tax_office ||
+                p.customer_tax_number ||
+                p.clients?.tax_number) && (
+                <div className="mt-2 leading-5 text-slate-600">
+                  {p.customer_tax_office || p.clients?.tax_office || "—"}
+                  <br />
+                  VKN {p.customer_tax_number || p.clients?.tax_number || "—"}
+                </div>
+              )}
+              <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 border-t border-slate-300 pt-4">
+                <dt className="text-slate-400">Tarih</dt>
+                <dd className="text-right font-medium">{p.issue_date}</dd>
+                <dt className="text-slate-400">Geçerlilik</dt>
+                <dd className="text-right font-medium">
+                  {p.valid_until || "—"}
+                </dd>
+                <dt className="text-slate-400">Para birimi</dt>
+                <dd className="text-right font-medium">{p.currency}</dd>
+              </dl>
+            </div>
           </div>
-        </section>
+        </header>
         <table className="mt-10 w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-left text-xs uppercase">
