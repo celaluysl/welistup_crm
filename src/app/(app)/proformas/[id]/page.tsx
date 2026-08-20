@@ -109,6 +109,26 @@ export default async function ProformaDetail({
             <span>{formatMoney(p.grand_total, p.currency)}</span>
           </div>
         </section>
+        {(p.description || p.payment_terms) && (
+          <section className="mt-10 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
+            {p.description && (
+              <div className={`rounded-lg bg-slate-50 p-4 text-sm ${p.payment_terms ? "" : "sm:col-span-2 print:col-span-2"}`}>
+                <h2 className="font-semibold">Genel açıklama</h2>
+                <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
+                  {p.description}
+                </p>
+              </div>
+            )}
+            {p.payment_terms && (
+              <div className={`rounded-lg bg-slate-50 p-4 text-sm ${p.description ? "" : "sm:col-span-2 print:col-span-2"}`}>
+                <h2 className="font-semibold">Ödeme koşulları</h2>
+                <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
+                  {p.payment_terms}
+                </p>
+              </div>
+            )}
+          </section>
+        )}
         {p.bank_details && (
           <section className="mt-10 rounded-lg bg-slate-50 p-4 text-sm">
             <h2 className="font-semibold">Banka bilgileri</h2>
