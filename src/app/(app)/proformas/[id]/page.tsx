@@ -22,16 +22,24 @@ export default async function ProformaDetail({
       <div className="mb-4 flex justify-end print:hidden">
         <PrintButton />
       </div>
-      <article className="mx-auto min-h-[297mm] max-w-[210mm] bg-white p-[16mm] text-slate-900 shadow-sm print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
-        <header className="border-b-2 border-[#CD0B16] pb-8">
-          <div className="grid gap-x-12 gap-y-7 sm:grid-cols-2 print:grid-cols-2">
-            <Image src="/logo.svg" alt="Welistup" width={170} height={53} />
+      <article className="mx-auto min-h-[297mm] max-w-[210mm] bg-white p-[12mm] text-slate-900 shadow-sm [print-color-adjust:exact] print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
+        <header className="border-b-2 border-[#CD0B16] pb-5">
+          <div className="grid gap-x-10 gap-y-5 sm:grid-cols-2 print:grid-cols-2">
+            <Image
+              src="/logo.svg"
+              alt="Welistup"
+              width={170}
+              height={53}
+              priority
+              unoptimized
+              className="h-auto w-[170px]"
+            />
             <div className="text-left sm:text-right print:text-right">
               <h1 className="text-2xl font-bold text-[#CD0B16]">
                 PROFORMA FATURA
               </h1>
               <p className="mt-1 text-xs font-bold">MALİ BELGE DEĞİLDİR</p>
-              <p className="mt-4 text-sm font-semibold">{p.proforma_number}</p>
+              <p className="mt-2 text-sm font-semibold">{p.proforma_number}</p>
             </div>
 
             <div className="text-sm">
@@ -70,7 +78,7 @@ export default async function ProformaDetail({
                   VKN {p.customer_tax_number || p.clients?.tax_number || "—"}
                 </div>
               )}
-              <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 border-t border-slate-300 pt-4">
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 border-t border-slate-300 pt-3">
                 <dt className="text-slate-400">Tarih</dt>
                 <dd className="text-right font-medium">{p.issue_date}</dd>
                 <dt className="text-slate-400">Geçerlilik</dt>
@@ -83,14 +91,14 @@ export default async function ProformaDetail({
             </div>
           </div>
         </header>
-        <table className="mt-10 w-full text-sm">
+        <table className="mt-6 w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-left text-xs uppercase">
-              <th className="px-3 py-3">Hizmet / Açıklama</th>
-              <th className="px-3 py-3 text-right">Miktar</th>
-              <th className="px-3 py-3 text-right">Birim</th>
-              <th className="px-3 py-3 text-right">KDV</th>
-              <th className="px-3 py-3 text-right">Toplam</th>
+              <th className="px-3 py-2.5">Hizmet / Açıklama</th>
+              <th className="px-3 py-2.5 text-right">Miktar</th>
+              <th className="px-3 py-2.5 text-right">Birim</th>
+              <th className="px-3 py-2.5 text-right">KDV</th>
+              <th className="px-3 py-2.5 text-right">Toplam</th>
             </tr>
           </thead>
           <tbody>
@@ -105,18 +113,18 @@ export default async function ProformaDetail({
                 line_total: number;
               }) => (
                 <tr key={x.id} className="border-b">
-                  <td className="px-3 py-4">
+                  <td className="px-3 py-3">
                     <div className="font-medium">{x.service_name}</div>
                     <div className="text-xs text-slate-500">
                       {x.description}
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-right">{x.quantity}</td>
-                  <td className="px-3 py-4 text-right">
+                  <td className="px-3 py-3 text-right">{x.quantity}</td>
+                  <td className="px-3 py-3 text-right">
                     {formatMoney(x.unit_price, p.currency)}
                   </td>
-                  <td className="px-3 py-4 text-right">%{x.vat_rate}</td>
-                  <td className="px-3 py-4 text-right font-medium">
+                  <td className="px-3 py-3 text-right">%{x.vat_rate}</td>
+                  <td className="px-3 py-3 text-right font-medium">
                     {formatMoney(x.line_total, p.currency)}
                   </td>
                 </tr>
@@ -125,14 +133,14 @@ export default async function ProformaDetail({
           </tbody>
         </table>
         <section
-          className={`mt-6 grid items-start gap-8 ${
+          className={`mt-5 grid items-start gap-6 ${
             p.description
               ? "sm:grid-cols-[minmax(0,1fr)_18rem] print:grid-cols-[minmax(0,1fr)_18rem]"
               : ""
           }`}
         >
           {p.description && (
-            <div className="rounded-lg bg-slate-50 p-4 text-sm">
+            <div className="rounded-lg bg-slate-50 p-3.5 text-sm">
               <h2 className="font-semibold">Genel açıklama</h2>
               <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
                 {p.description}
@@ -160,7 +168,7 @@ export default async function ProformaDetail({
           </div>
         </section>
         {p.payment_terms && (
-          <section className="mt-6 rounded-lg bg-slate-50 p-4 text-sm">
+          <section className="mt-4 rounded-lg bg-slate-50 p-3.5 text-sm">
             <h2 className="font-semibold">Ödeme koşulları</h2>
             <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
               {p.payment_terms}
@@ -168,14 +176,14 @@ export default async function ProformaDetail({
           </section>
         )}
         {p.bank_details && (
-          <section className="mt-6 rounded-lg bg-slate-50 p-4 text-sm">
+          <section className="mt-4 rounded-lg bg-slate-50 p-3.5 text-sm">
             <h2 className="font-semibold">Banka bilgileri</h2>
             <p className="mt-2 whitespace-pre-line text-slate-600">
               {p.bank_details}
             </p>
           </section>
         )}
-        <footer className="mt-12 border-t pt-4 text-center text-[10px] text-slate-400">
+        <footer className="mt-7 border-t pt-3 text-center text-[10px] text-slate-400">
           Bu belge yalnızca bilgilendirme amaçlı proformadır ve mali belge
           niteliği taşımaz.
         </footer>

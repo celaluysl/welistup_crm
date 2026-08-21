@@ -17,7 +17,7 @@ export async function Header() {
       .eq("is_read", false),
   ]);
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-5 backdrop-blur lg:px-8">
+    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-5 backdrop-blur print:hidden lg:px-8">
       <form
         action="/search"
         className="relative hidden w-full max-w-md md:block"
