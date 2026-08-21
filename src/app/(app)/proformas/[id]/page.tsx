@@ -35,10 +35,7 @@ export default async function ProformaDetail({
             </div>
 
             <div className="text-sm">
-              <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Düzenleyen
-              </div>
-              <div className="mt-2 text-base font-semibold">
+              <div className="text-base font-semibold">
                 {companyProfile.legalName}
               </div>
               <address className="mt-2 whitespace-pre-line not-italic leading-5 text-slate-600">
@@ -52,10 +49,7 @@ export default async function ProformaDetail({
             </div>
 
             <div className="text-sm">
-              <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Müşteri
-              </div>
-              <div className="mt-2 text-base font-semibold">
+              <div className="text-base font-semibold">
                 {p.customer_legal_name ||
                   p.customer_name ||
                   p.clients?.legal_name ||
@@ -130,40 +124,51 @@ export default async function ProformaDetail({
             )}
           </tbody>
         </table>
-        <section className="ml-auto mt-6 w-72 space-y-2 text-sm">
-          <Row label="Ara toplam" value={formatMoney(p.subtotal, p.currency)} />
-          <Row
-            label="İndirim"
-            value={formatMoney(p.total_discount, p.currency)}
-          />
-          <Row label="KDV" value={formatMoney(p.total_vat, p.currency)} />
-          <div className="flex justify-between border-t-2 border-[#CD0B16] pt-3 text-lg font-bold">
-            <span>Genel toplam</span>
-            <span>{formatMoney(p.grand_total, p.currency)}</span>
+        <section
+          className={`mt-6 grid items-start gap-8 ${
+            p.description
+              ? "sm:grid-cols-[minmax(0,1fr)_18rem] print:grid-cols-[minmax(0,1fr)_18rem]"
+              : ""
+          }`}
+        >
+          {p.description && (
+            <div className="rounded-lg bg-slate-50 p-4 text-sm">
+              <h2 className="font-semibold">Genel açıklama</h2>
+              <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
+                {p.description}
+              </p>
+            </div>
+          )}
+          <div
+            className={`w-full max-w-72 space-y-2 text-sm ${
+              p.description ? "" : "ml-auto"
+            }`}
+          >
+            <Row
+              label="Ara toplam"
+              value={formatMoney(p.subtotal, p.currency)}
+            />
+            <Row
+              label="İndirim"
+              value={formatMoney(p.total_discount, p.currency)}
+            />
+            <Row label="KDV" value={formatMoney(p.total_vat, p.currency)} />
+            <div className="flex justify-between border-t-2 border-[#CD0B16] pt-3 text-lg font-bold">
+              <span>Genel toplam</span>
+              <span>{formatMoney(p.grand_total, p.currency)}</span>
+            </div>
           </div>
         </section>
-        {(p.description || p.payment_terms) && (
-          <section className="mt-10 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-            {p.description && (
-              <div className={`rounded-lg bg-slate-50 p-4 text-sm ${p.payment_terms ? "" : "sm:col-span-2 print:col-span-2"}`}>
-                <h2 className="font-semibold">Genel açıklama</h2>
-                <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
-                  {p.description}
-                </p>
-              </div>
-            )}
-            {p.payment_terms && (
-              <div className={`rounded-lg bg-slate-50 p-4 text-sm ${p.description ? "" : "sm:col-span-2 print:col-span-2"}`}>
-                <h2 className="font-semibold">Ödeme koşulları</h2>
-                <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
-                  {p.payment_terms}
-                </p>
-              </div>
-            )}
+        {p.payment_terms && (
+          <section className="mt-6 rounded-lg bg-slate-50 p-4 text-sm">
+            <h2 className="font-semibold">Ödeme koşulları</h2>
+            <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-slate-600">
+              {p.payment_terms}
+            </p>
           </section>
         )}
         {p.bank_details && (
-          <section className="mt-10 rounded-lg bg-slate-50 p-4 text-sm">
+          <section className="mt-6 rounded-lg bg-slate-50 p-4 text-sm">
             <h2 className="font-semibold">Banka bilgileri</h2>
             <p className="mt-2 whitespace-pre-line text-slate-600">
               {p.bank_details}
