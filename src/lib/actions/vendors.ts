@@ -217,3 +217,39 @@ export async function payVendorAccrual(_: State, fd: FormData): Promise<State> {
   revalidatePath("/transactions");
   return { success: "Tedarikçi ödemesi ve kasa hareketi kaydedildi." };
 }
+
+export async function settleVendorAccrualDirect(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const p = z
+    .object({
+      accrual_id: z.string().uuid(),
+      amount: z.coerce.number().positive(),
+      payment_date: z.string().date(),
+      payer_name: z.string().trim().min(2),
+      notes: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!p.success) return { error: "Doğrudan ödeme bilgilerini kontrol edin." };
+  const s = await createClient();
+  const { error } = await s.rpc("settle_vendor_accrual_direct", {
+    p_accrual_id: p.data.accrual_id,
+    p_amount: p.data.amount,
+    p_payment_date: p.data.payment_date,
+    p_payer_name: p.data.payer_name,
+    p_notes: p.data.notes || null,
+  });
+  if (error)
+    return {
+      error: error.message.includes("invalid_payment_amount")
+        ? "Tutar kalan hakedişten büyük olamaz."
+        : error.message.includes("amount_review_required")
+          ? "Önce bu ayın hakediş tutarını onaylayın."
+          : error.message,
+    };
+  revalidatePath("/vendor-payments");
+  revalidatePath("/expenses");
+  revalidatePath("/month-close");
+  return { success: "Müşterinin doğrudan ödemesi kaydedildi; kasa hareketi oluşturulmadı." };
+}

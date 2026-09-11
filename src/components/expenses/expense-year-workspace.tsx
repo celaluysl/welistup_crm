@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/expenses";
 import {
   payVendorAccrual,
+  settleVendorAccrualDirect,
   updateVendorAccrualAmount,
 } from "@/lib/actions/vendors";
 import { transferAccounts } from "@/lib/actions/accounts";
@@ -40,6 +41,9 @@ export type ExpenseRow = {
   dueDate: string | null;
   notes: string | null;
   requiresReview: boolean;
+  payerName?: string;
+  directPaid?: number;
+  items?: ExpenseRow[];
 };
 export type ExpenseDefinition = {
   id: string;
@@ -528,6 +532,7 @@ function DetailDialog({
   onSaved: () => void;
 }) {
   const remaining = Math.max(0, row.total - row.paid);
+  const vendorItems = row.source === "vendor" ? (row.items || [row]) : [];
   return (
     <Modal title={`${months[row.month - 1]} · ${row.name}`} onClose={onClose}>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -539,12 +544,32 @@ function DetailDialog({
         {row.category}
         {row.notes ? ` · ${row.notes}` : ""}
       </div>
+      {row.source === "vendor" && row.directPaid ? (
+        <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          Müşterilerin doğrudan ödediği: <b>{formatMoney(row.directPaid, row.currency)}</b>. Bu tutar hakedişten düşüldü, kasa çıkışına eklenmedi.
+        </div>
+      ) : null}
       {row.source === "manual" && (
         <ManualExpenseEditor row={row} onSaved={onSaved} />
       )}
-      {row.requiresReview && row.source === "vendor" ? (
+      {row.source === "vendor" && vendorItems.length > 1 ? (
+        <div className="mt-5 space-y-3 border-t pt-5">
+          <h3 className="font-semibold">Hakediş detayı</h3>
+          {vendorItems.map((item) => {
+            const itemRemaining = Math.max(0, item.total - item.paid);
+            return <div key={item.id} className="rounded-xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div><b>{item.payerName}</b><div className="text-xs text-slate-500">{item.category}</div></div>
+                <div className="text-right"><b>{formatMoney(item.total, item.currency)}</b><div className="text-xs text-slate-500">Kalan {formatMoney(itemRemaining, item.currency)}</div></div>
+              </div>
+              {item.requiresReview ? <VendorReview row={item} onSaved={onSaved} /> : itemRemaining > 0 ? <VendorSettlement row={item} remaining={itemRemaining} accounts={accounts} onSaved={onSaved} /> : <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Hakediş kapandı{item.directPaid ? " · Müşteri doğrudan ödedi" : ""}.</div>}
+            </div>;
+          })}
+        </div>
+      ) : row.requiresReview && row.source === "vendor" ? (
         <VendorReview row={row} onSaved={onSaved} />
       ) : remaining > 0 ? (
+        row.source === "vendor" ? <VendorSettlement row={row} remaining={remaining} accounts={accounts} onSaved={onSaved} /> :
         <Payment
           row={row}
           remaining={remaining}
@@ -558,6 +583,30 @@ function DetailDialog({
       )}
     </Modal>
   );
+}
+function VendorSettlement({ row, remaining, accounts, onSaved }: { row: ExpenseRow; remaining: number; accounts: Account[]; onSaved: () => void }) {
+  const [direct, setDirect] = useState(false);
+  return <div>
+    <div className="mt-4 flex rounded-lg bg-slate-100 p-1">
+      <button type="button" onClick={() => setDirect(false)} className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold ${!direct ? "bg-white shadow-sm" : "text-slate-500"}`}>Şirket kasasından öde</button>
+      <button type="button" onClick={() => setDirect(true)} className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold ${direct ? "bg-white shadow-sm" : "text-slate-500"}`}>Müşteri doğrudan ödedi</button>
+    </div>
+    {direct ? <DirectVendorPayment row={row} remaining={remaining} onSaved={onSaved} /> : <Payment row={row} remaining={remaining} accounts={accounts} onSaved={onSaved} />}
+  </div>;
+}
+function DirectVendorPayment({ row, remaining, onSaved }: { row: ExpenseRow; remaining: number; onSaved: () => void }) {
+  const [state, action, pending] = useActionState(settleVendorAccrualDirect, null);
+  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
+  return <form action={action} className="mt-3 grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:grid-cols-2">
+    <input type="hidden" name="accrual_id" value={row.id} />
+    <Field label="Doğrudan ödenen tutar"><input name="amount" type="number" min="0.01" max={remaining} step="0.01" defaultValue={remaining} required className={inputClass} /></Field>
+    <Field label="Ödemeyi yapan müşteri"><input name="payer_name" defaultValue={row.payerName || "Merven"} required className={inputClass} /></Field>
+    <Field label="Ödeme tarihi"><input name="payment_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required className={inputClass} /></Field>
+    <Field label="Not"><input name="notes" placeholder="Örn. Merven müşterisi doğrudan Tuğrul'a ödedi" className={inputClass} /></Field>
+    <Result state={state} />
+    <p className="text-xs text-blue-700 sm:col-span-2">Bu işlem hakedişi kapatır; şirket kasasında gider hareketi oluşturmaz.</p>
+    <div className="sm:col-span-2"><Button disabled={pending}>{pending ? "Kaydediliyor…" : "Doğrudan ödemeyi kaydet"}</Button></div>
+  </form>;
 }
 function ManualExpenseEditor({
   row,

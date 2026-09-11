@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { createClient } from "@/lib/supabase/server";
 
-type Payment = { amount: number };
+type Payment = { amount: number; payment_channel?: string; payer_name?: string | null };
 export default async function Expenses({
   searchParams,
 }: {
@@ -27,7 +27,7 @@ export default async function Expenses({
     s
       .from("vendor_accruals")
       .select(
-        "id,vendor_assignment_id,month,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,requires_amount_review,vendors(name),projects(name),project_services(services(name)),vendor_payments(amount)",
+        "id,vendor_assignment_id,month,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,requires_amount_review,vendors(name),projects(name,clients(company_name)),project_services(services(name)),vendor_payments(amount,payment_channel,payer_name)",
       )
       .eq("year", year)
       .eq("billing_preference", billing)
@@ -78,16 +78,18 @@ export default async function Expenses({
       .reduce((total, transaction) => total + Number(transaction.amount || 0), 0);
     return { month, spent, replenished, remaining: Math.max(0, spent - replenished) };
   });
-  const rows: ExpenseRow[] = [
-    ...(vendorResult.data || []).map((r) => ({
+  const vendorRows: ExpenseRow[] = (vendorResult.data || []).map((r) => {
+    const project = rel(r.projects) as { name?: string; clients?: unknown } | null;
+    const payments = (r.vendor_payments as Payment[] | null) || [];
+    return {
       id: r.id,
       source: "vendor" as const,
-      groupKey: `vendor:${r.vendor_assignment_id || r.id}`,
+      groupKey: `vendor:${rel(r.vendors)?.name || r.id}:${r.currency}:${r.billing_preference}`,
       month: r.month,
       name: rel(r.vendors)?.name || "Tedarikçi",
       category:
         [
-          rel(r.projects)?.name,
+          project?.name,
           rel(r.project_services)?.services
             ? rel(rel(r.project_services)?.services)?.name
             : null,
@@ -98,17 +100,29 @@ export default async function Expenses({
       vatRate: Number(r.vat_rate),
       vat: Number(r.vat_amount),
       total: Number(r.amount),
-      paid:
-        (r.vendor_payments as Payment[] | null)?.reduce(
-          (a, p) => a + Number(p.amount),
-          0,
-        ) || 0,
+      paid: payments.reduce((a, p) => a + Number(p.amount), 0),
       currency: r.currency,
       billing: r.billing_preference,
       dueDate: r.due_date,
       notes: r.notes,
       requiresReview: r.requires_amount_review,
-    })),
+      payerName: rel(project?.clients)?.company_name || project?.name || "Müşteri",
+      directPaid: payments.filter((p) => p.payment_channel === "client_direct").reduce((a, p) => a + Number(p.amount), 0),
+    };
+  });
+  const aggregatedVendors = [...vendorRows.reduce((map, row) => {
+    const key = `${row.groupKey}:${row.month}`;
+    const current = map.get(key);
+    if (!current) map.set(key, { ...row, category: "Aylık toplu tedarikçi hakedişi", items: [row] });
+    else {
+      current.net += row.net; current.vat += row.vat; current.total += row.total;
+      current.paid += row.paid; current.directPaid = (current.directPaid || 0) + (row.directPaid || 0);
+      current.requiresReview ||= row.requiresReview; current.items!.push(row);
+    }
+    return map;
+  }, new Map<string, ExpenseRow>()).values()];
+  const rows: ExpenseRow[] = [
+    ...aggregatedVendors,
     ...(manualResult.data || []).map((r) => ({
       id: r.id,
       source: "manual" as const,
@@ -229,6 +243,8 @@ export default async function Expenses({
 function rel(v: unknown) {
   return (Array.isArray(v) ? v[0] : v) as {
     name?: string;
+    company_name?: string;
+    clients?: unknown;
     services?: unknown;
   } | null;
 }
