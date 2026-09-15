@@ -549,7 +549,8 @@ function totalCollected(row: CollectionRow) {
   return (
     row.payments
       .filter((payment) => payment.countsAsCash)
-      .reduce((sum, payment) => sum + payment.amount, 0) + excessForRow(row)
+      .reduce((sum, payment) => sum + payment.amount, 0) +
+    row.excessReceipts.reduce((sum, receipt) => sum + receipt.amount, 0)
   );
 }
 function Status({ row }: { row: CollectionRow }) {
