@@ -21,6 +21,8 @@ export async function createProject(
   if (!p.success) return { error: "Proje bilgilerini kontrol edin." };
   const services = parseProjectServices(fd);
   if (!services.success) return { error: services.error };
+  const vendor = parseProjectVendor(fd);
+  if (!vendor.success) return { error: vendor.error };
   const s = await createClient();
   const { data, error } = await s.rpc("create_project_with_services", {
     p_client_id: p.data.client_id,
@@ -34,7 +36,51 @@ export async function createProject(
     p_services: normalizeProjectVat(services.data, p.data.billing_preference),
   });
   if (error) return { error: projectWorkflowError(error.message) };
+  if (vendor.data) {
+    const {
+      data: { user },
+    } = await s.auth.getUser();
+    const { data: projectService, error: serviceError } = await s
+      .from("project_services")
+      .select("id,currency")
+      .eq("project_id", data)
+      .eq("status", "active")
+      .single();
+    if (serviceError || !projectService || !user)
+      return {
+        error:
+          "Proje oluşturuldu ancak tedarikçi hakedişi bağlanamadı. Proje detayından tekrar deneyin.",
+      };
+    const { error: vendorError } = await s.from("vendor_assignments").insert({
+      vendor_id: vendor.data.vendor_id,
+      project_service_id: projectService.id,
+      start_date: p.data.start_date,
+      end_date: null,
+      default_amount: vendor.data.default_amount,
+      payment_model: "monthly_fixed",
+      billing_preference: vendor.data.billing_preference,
+      vat_rate: vendor.data.vat_rate,
+      payment_day: vendor.data.payment_day,
+      currency: projectService.currency,
+      notes: "Proje kaydı sırasında tanımlanan aylık hakediş",
+      created_by: user.id,
+    });
+    if (vendorError)
+      return {
+        error: `Proje oluşturuldu ancak tedarikçi hakedişi kaydedilemedi: ${vendorError.message}`,
+      };
+    const start = new Date(`${p.data.start_date}T00:00:00`);
+    const now = new Date();
+    if (start <= now) {
+      await s.rpc("generate_vendor_accruals", {
+        p_year: now.getFullYear(),
+        p_month: now.getMonth() + 1,
+      });
+    }
+  }
   revalidatePath("/projects");
+  revalidatePath("/expenses");
+  revalidatePath("/vendor-payments");
   redirect(`/projects/${data}`);
 }
 const serviceSchema = z.object({
@@ -102,6 +148,8 @@ export async function updateProject(
   if (!p.success) return { error: "Proje bilgilerini kontrol edin." };
   const services = parseProjectServices(fd, true);
   if (!services.success) return { error: services.error };
+  const vendor = parseProjectVendor(fd);
+  if (!vendor.success) return { error: vendor.error };
   const s = await createClient();
   const { error } = await s.rpc("update_project_with_new_services", {
     p_project_id: id,
@@ -116,8 +164,47 @@ export async function updateProject(
     p_services: normalizeProjectVat(services.data, p.data.billing_preference),
   });
   if (error) return { error: projectWorkflowError(error.message) };
+  const assignmentId = String(fd.get("vendor_assignment_id") || "");
+  const { data: projectService } = await s
+    .from("project_services")
+    .select("id,currency")
+    .eq("project_id", id)
+    .eq("status", "active")
+    .single();
+  if (vendor.data && projectService) {
+    const {
+      data: { user },
+    } = await s.auth.getUser();
+    const values = {
+      vendor_id: vendor.data.vendor_id,
+      project_service_id: projectService.id,
+      start_date: p.data.start_date,
+      default_amount: vendor.data.default_amount,
+      payment_model: "monthly_fixed" as const,
+      billing_preference: vendor.data.billing_preference,
+      vat_rate: vendor.data.vat_rate,
+      payment_day: vendor.data.payment_day,
+      currency: projectService.currency,
+      status: "active" as const,
+      notes: "Proje kaydından tanımlanan aylık hakediş",
+    };
+    const vendorResult = assignmentId
+      ? await s.from("vendor_assignments").update(values).eq("id", assignmentId)
+      : await s.from("vendor_assignments").insert({ ...values, created_by: user?.id });
+    if (vendorResult.error)
+      return { error: `Proje güncellendi ancak hakediş kaydedilemedi: ${vendorResult.error.message}` };
+  } else if (!vendor.data && assignmentId) {
+    const { error: deactivateError } = await s
+      .from("vendor_assignments")
+      .update({ status: "inactive", end_date: new Date().toISOString().slice(0, 10) })
+      .eq("id", assignmentId);
+    if (deactivateError)
+      return { error: `Proje güncellendi ancak hakediş durdurulamadı: ${deactivateError.message}` };
+  }
   revalidatePath(`/projects/${id}`);
   revalidatePath("/projects");
+  revalidatePath("/expenses");
+  revalidatePath("/vendor-payments");
   redirect(`/projects/${id}`);
 }
 
@@ -135,6 +222,29 @@ const projectServiceSchema = z.object({
   payment_timing: z.enum(["advance", "arrears"]),
   notes: z.string().trim().optional(),
 });
+const projectVendorSchema = z.object({
+  vendor_id: z.string().uuid(),
+  default_amount: z.coerce.number().positive(),
+  payment_day: z.coerce.number().int().min(1).max(31),
+  billing_preference: z.enum(["invoiced", "uninvoiced"]),
+  vat_rate: z.coerce.number().min(0).max(100),
+});
+function parseProjectVendor(fd: FormData):
+  | { success: true; data: z.infer<typeof projectVendorSchema> | null }
+  | { success: false; error: string } {
+  const vendorId = String(fd.get("vendor_id") || "");
+  if (!vendorId) return { success: true, data: null };
+  const parsed = projectVendorSchema.safeParse({
+    vendor_id: vendorId,
+    default_amount: fd.get("vendor_default_amount"),
+    payment_day: fd.get("vendor_payment_day"),
+    billing_preference: fd.get("vendor_billing_preference"),
+    vat_rate: fd.get("vendor_vat_rate"),
+  });
+  if (!parsed.success)
+    return { success: false, error: "Tedarikçi ve aylık hakediş bilgilerini kontrol edin." };
+  return { success: true, data: parsed.data };
+}
 function parseProjectServices(
   fd: FormData,
   optional = false,

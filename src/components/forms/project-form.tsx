@@ -8,6 +8,7 @@ export function ProjectForm({
   clients,
   services,
   specialists,
+  vendors,
   initialClientId,
 }: {
   clients: { id: string; company_name: string }[];
@@ -22,12 +23,14 @@ export function ProjectForm({
     last_name: string;
     email: string;
   }[];
+  vendors: { id: string; name: string }[];
   initialClientId?: string;
 }) {
   const [state, action, pending] = useActionState(createProject, null);
   const [billingPreference, setBillingPreference] = useState<
     "invoiced" | "uninvoiced"
   >("invoiced");
+  const [vendorId, setVendorId] = useState("");
   return (
     <form action={action} className="grid gap-5 sm:grid-cols-2">
       <Field label="Müşteri" className="sm:col-span-2">
@@ -74,6 +77,57 @@ export function ProjectForm({
         services={services}
         isUninvoiced={billingPreference === "uninvoiced"}
       />
+      <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 sm:col-span-2">
+        <div className="mb-4">
+          <h3 className="font-semibold text-blue-950">Tedarikçi hakedişi</h3>
+          <p className="mt-1 text-xs text-blue-700">
+            Projeyi yapan dış uzmanı seçerseniz müşteri ücreti gelir olarak,
+            buradaki tutar ise ayrı gider olarak hesaplanır. Bu seçim müşterinin
+            tedarikçiye doğrudan ödeme yaptığı anlamına gelmez.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="Dış uzman / tedarikçi" className="xl:col-span-2">
+            <select
+              name="vendor_id"
+              value={vendorId}
+              onChange={(event) => setVendorId(event.target.value)}
+              className={inputClass}
+            >
+              <option value="">Tedarikçi hakedişi yok</option>
+              {vendors.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Aylık net hakediş">
+            <input
+              name="vendor_default_amount"
+              type="number"
+              min="0"
+              step="0.01"
+              required={Boolean(vendorId)}
+              disabled={!vendorId}
+              placeholder="Örn. 15000"
+              className={`${inputClass} disabled:bg-slate-100`}
+            />
+          </Field>
+          <Field label="Hakediş ödeme günü">
+            <input
+              name="vendor_payment_day"
+              type="number"
+              min="1"
+              max="31"
+              defaultValue={28}
+              required={Boolean(vendorId)}
+              disabled={!vendorId}
+              className={`${inputClass} disabled:bg-slate-100`}
+            />
+          </Field>
+        </div>
+        <input type="hidden" name="vendor_billing_preference" value="invoiced" />
+        <input type="hidden" name="vendor_vat_rate" value="0" />
+      </div>
       <Field label="Faturalama tercihi">
         <select
           name="billing_preference"

@@ -32,6 +32,15 @@ type Project = {
       effective_from: string;
       effective_to: string | null;
     }[];
+    vendor_assignments: {
+      id: string;
+      vendor_id: string;
+      default_amount: number;
+      payment_day: number;
+      billing_preference: "invoiced" | "uninvoiced";
+      vat_rate: number;
+      status: string;
+    }[];
   }[];
 };
 export function EditProjectForm({
@@ -39,6 +48,7 @@ export function EditProjectForm({
   clients,
   services,
   specialists,
+  vendors,
 }: {
   project: Project;
   clients: { id: string; company_name: string }[];
@@ -54,6 +64,7 @@ export function EditProjectForm({
     last_name: string;
     email: string;
   }[];
+  vendors: { id: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState(updateProject, null);
   const [billingPreference, setBillingPreference] = useState(
@@ -70,6 +81,10 @@ export function EditProjectForm({
         b.effective_from.localeCompare(a.effective_from),
       )[0]
     : undefined;
+  const activeVendorAssignment = activeService?.vendor_assignments?.find(
+    (assignment) => assignment.status === "active",
+  );
+  const [vendorId, setVendorId] = useState(activeVendorAssignment?.vendor_id || "");
   return (
     <form action={action} className="grid gap-5 sm:grid-cols-2">
       <input type="hidden" name="id" value={project.id} />
@@ -148,6 +163,31 @@ export function EditProjectForm({
             : undefined
         }
       />
+      <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 sm:col-span-2">
+        <div className="mb-4">
+          <h3 className="font-semibold text-blue-950">Tedarikçi hakedişi</h3>
+          <p className="mt-1 text-xs text-blue-700">
+            Müşteri hizmet bedeli gelir olarak kalır; burada yazılan tutar bağımsız tedarikçi gideridir.
+          </p>
+        </div>
+        <input type="hidden" name="vendor_assignment_id" value={activeVendorAssignment?.id || ""} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="Dış uzman / tedarikçi" className="xl:col-span-2">
+            <select name="vendor_id" value={vendorId} onChange={(event) => setVendorId(event.target.value)} className={inputClass}>
+              <option value="">Tedarikçi hakedişi yok</option>
+              {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Aylık net hakediş">
+            <input name="vendor_default_amount" type="number" min="0" step="0.01" defaultValue={activeVendorAssignment?.default_amount} required={Boolean(vendorId)} disabled={!vendorId} className={`${inputClass} disabled:bg-slate-100`} />
+          </Field>
+          <Field label="Hakediş ödeme günü">
+            <input name="vendor_payment_day" type="number" min="1" max="31" defaultValue={activeVendorAssignment?.payment_day || 28} required={Boolean(vendorId)} disabled={!vendorId} className={`${inputClass} disabled:bg-slate-100`} />
+          </Field>
+        </div>
+        <input type="hidden" name="vendor_billing_preference" value="invoiced" />
+        <input type="hidden" name="vendor_vat_rate" value="0" />
+      </div>
       <Field label="Faturalama tercihi">
         <select
           name="billing_preference"

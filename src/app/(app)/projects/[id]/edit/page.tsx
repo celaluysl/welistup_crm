@@ -15,11 +15,12 @@ export default async function EditProject({
     { data: clients },
     { data: services },
     { data: specialists },
+    { data: vendors },
   ] = await Promise.all([
     s
       .from("projects")
       .select(
-        "id,client_id,name,domain,description,start_date,billing_preference,is_white_label,project_services(id,service_id,periodicity,currency,payment_term_days,payment_interval_months,payment_timing,notes,status,services(name),project_service_members(profile_id),project_service_prices(net_price,vat_rate,currency,effective_from,effective_to))",
+        "id,client_id,name,domain,description,start_date,billing_preference,is_white_label,project_services(id,service_id,periodicity,currency,payment_term_days,payment_interval_months,payment_timing,notes,status,services(name),project_service_members(profile_id),project_service_prices(net_price,vat_rate,currency,effective_from,effective_to),vendor_assignments(id,vendor_id,default_amount,payment_day,billing_preference,vat_rate,status))",
       )
       .eq("id", id)
       .single(),
@@ -38,6 +39,7 @@ export default async function EditProject({
       .select("id,first_name,last_name,email")
       .eq("status", "active")
       .order("first_name"),
+    s.from("vendors").select("id,name").eq("status", "active").order("name"),
   ]);
   if (!project) notFound();
   return (
@@ -49,6 +51,7 @@ export default async function EditProject({
           clients={clients || []}
           services={services || []}
           specialists={specialists || []}
+          vendors={vendors || []}
         />
       </Card>
     </>

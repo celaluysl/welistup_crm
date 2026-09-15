@@ -9,7 +9,7 @@ export default async function NewProject({
 }) {
   const { client_id } = await searchParams;
   const s = await createClient();
-  const [{ data: clients }, { data: services }, { data: specialists }] =
+  const [{ data: clients }, { data: services }, { data: specialists }, { data: vendors }] =
     await Promise.all([
       s
         .from("clients")
@@ -26,6 +26,11 @@ export default async function NewProject({
         .select("id,first_name,last_name,email")
         .eq("status", "active")
         .order("first_name"),
+      s
+        .from("vendors")
+        .select("id,name")
+        .eq("status", "active")
+        .order("name"),
     ]);
   return (
     <>
@@ -38,6 +43,7 @@ export default async function NewProject({
           clients={clients || []}
           services={services || []}
           specialists={specialists || []}
+          vendors={vendors || []}
           initialClientId={client_id}
         />
       </Card>
