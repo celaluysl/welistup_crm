@@ -153,6 +153,7 @@ export function CollectionWorkspace({
         service: string;
         billing: CollectionRow["billing"];
         months: Map<number, CollectionRow>;
+        cashByMonth: Map<number, number>;
       }
     >();
     filtered.forEach((row) => {
@@ -163,12 +164,23 @@ export function CollectionWorkspace({
         service: row.service,
         billing: row.billing,
         months: new Map(),
+        cashByMonth: new Map(),
       };
       current.months.set(row.month, row);
+      for (const payment of row.payments) {
+        const paymentYear = Number(payment.paymentDate.slice(0, 4));
+        const paymentMonth = Number(payment.paymentDate.slice(5, 7));
+        if (paymentYear === year) {
+          current.cashByMonth.set(
+            paymentMonth,
+            (current.cashByMonth.get(paymentMonth) || 0) + payment.amount,
+          );
+        }
+      }
       map.set(row.projectServiceId, current);
     });
     return [...map.values()];
-  }, [filtered]);
+  }, [filtered, year]);
 
   return (
     <>
@@ -322,6 +334,7 @@ export function CollectionWorkspace({
                         {row ? (
                           <MonthCell
                             row={row}
+                            cashCollected={group.cashByMonth.get(index + 1) || 0}
                             onClick={() => setSelected(row)}
                           />
                         ) : (
@@ -423,15 +436,16 @@ export function CollectionWorkspace({
 
 function MonthCell({
   row,
+  cashCollected,
   onClick,
 }: {
   row: CollectionRow;
+  cashCollected: number;
   onClick: () => void;
 }) {
   const remaining = row.settledWithoutCash
     ? 0
     : Math.max(0, row.total - row.paid);
-  const collected = totalCollected(row);
   const excess = excessForRow(row);
   const tone =
     row.status === "paid"
@@ -449,9 +463,11 @@ function MonthCell({
       <div className="font-bold text-slate-800">
         {row.settledWithoutCash
           ? "Önceden karşılandı"
-          : collected
-            ? formatMoney(collected, row.currency)
-            : "Ödeme bekliyor"}
+          : cashCollected
+            ? formatMoney(cashCollected, row.currency)
+            : row.status === "paid"
+              ? "Önceden ödendi"
+              : "Ödeme bekliyor"}
       </div>
       {excess > 0 ? (
         <div className="mt-1 text-[10px] font-medium text-amber-700">
@@ -461,7 +477,11 @@ function MonthCell({
         <div className="mt-1 text-[10px] text-slate-500">
           {row.settledWithoutCash
             ? "Yeni kasa hareketi oluşturulmadı"
-            : `Beklenen ${formatMoney(row.total, row.currency)}`}
+            : cashCollected
+              ? "Bu ay kasaya giren"
+              : row.status === "paid"
+                ? `Bu dönem karşılandı · ${formatMoney(row.total, row.currency)}`
+                : `Beklenen ${formatMoney(row.total, row.currency)}`}
         </div>
       )}
       {remaining > 0 && row.paid > 0 && (
