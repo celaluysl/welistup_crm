@@ -33,6 +33,7 @@ export default async function VendorPayments({
       )
       .eq("year", year)
       .eq("month", month)
+      .neq("status", "cancelled")
       .order("due_date"),
     s
       .from("accounts")

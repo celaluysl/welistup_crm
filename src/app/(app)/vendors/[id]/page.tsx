@@ -48,6 +48,7 @@ export default async function VendorDetail({
         )
         .eq("vendor_id", id)
         .eq("year", year)
+        .neq("status", "cancelled")
         .order("month"),
     ]);
   if (!vendor) notFound();
