@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { startMonthClose, setChecklistItem, reopenMonth } from "@/lib/actions/month-close";
 import { MonthCloseForm } from "@/components/forms/month-close-form";
+import { MonthCloseCashTargetForm } from "@/components/forms/month-close-cash-target-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
@@ -18,22 +19,19 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balancesResult] = await Promise.all([
+  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balanceTransactionsResult, settingsResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
     s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(company_name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("receivables")
-      .select("id,total_amount,status,due_date,payments(amount),clients(company_name),projects(name),service_periods!inner(year,month)")
-      .neq("status", "paid")
-      .eq("service_periods.year", year)
-      .eq("service_periods.month", month),
+    s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(id,company_name),projects(name),service_periods!inner(year,month)").neq("status", "paid"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
-    s.from("accounts").select("id,name,billing_preference,status").eq("status", "active"),
-    s.rpc("account_balances"),
+    s.from("accounts").select("id,name,billing_preference,status,opening_balance").eq("status", "active"),
+    s.from("finance_transactions").select("account_id,amount").lte("transaction_date", end),
+    s.from("month_close_settings").select("invoiced_cash_target,uninvoiced_cash_target").eq("id", true).maybeSingle(),
   ]);
 
   const close = closeResult.data;
@@ -42,7 +40,9 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const expenses = (expensesResult.data || []) as Row[];
   const vendors = (vendorsResult.data || []) as Row[];
   const payroll = (payrollResult.data || []) as Row[];
-  const overdue = (overdueResult.data || []) as Row[];
+  const allOpenReceivables = (overdueResult.data || []) as Row[];
+  const overdue = allOpenReceivables.filter((row) => periodIndex(row.service_periods) === year * 12 + month);
+  const previousOpen = allOpenReceivables.filter((row) => periodIndex(row.service_periods) < year * 12 + month);
   const ownerships = (ownershipResult.data || []) as Row[];
   const salaryProfiles = (salaryProfilesResult.data || []) as Row[];
   const partnerProfiles = salaryProfiles.filter((profile) => profile.employment_type === "partner");
@@ -83,19 +83,37 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     .reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
   const invoiceWaiting = periods.filter((r) => r.invoice_status === "waiting").length;
   const collectionWaiting = periods.filter((r) => r.collection_status !== "paid").length;
+  const unpaidClientCount = new Set(overdue.map((row) => relationId(row.clients)).filter(Boolean)).size;
+  const previousOpenAmount = previousOpen.reduce((total, row) => total + outstanding(row), 0);
   const partnerPayroll = new Map(payroll.filter((r) => r.employment_type === "partner").map((r) => [profileId(r.profiles), Number(r.net_payable || 0)]));
   const ownershipByProfile = new Map(ownerships.map((o) => [String(o.profile_id), o]));
   const fallbackPercent = partnerProfiles.length ? 100 / partnerProfiles.length : 0;
+  const accountMovement = new Map<string, number>();
+  for (const row of (balanceTransactionsResult.data || []) as Row[]) {
+    const id = String(row.account_id || "");
+    accountMovement.set(id, (accountMovement.get(id) || 0) + Number(row.amount || 0));
+  }
+  const accountRows = ((accountsResult.data || []) as Row[]).map((account) => ({
+    name: String(account.name),
+    balance: Number(account.opening_balance || 0) + (accountMovement.get(String(account.id)) || 0),
+    type: account.billing_preference,
+  }));
+  const invoicedBalance = accountRows.filter((account) => account.type === "invoiced").reduce((total, account) => total + account.balance, 0);
+  const uninvoicedBalance = accountRows.filter((account) => account.type === "uninvoiced").reduce((total, account) => total + account.balance, 0);
+  const invoicedTarget = Number(settingsResult.data?.invoiced_cash_target || 0);
+  const uninvoicedTarget = Number(settingsResult.data?.uninvoiced_cash_target || 0);
+  const invoicedTopUp = Math.max(0, invoicedTarget - invoicedBalance);
+  const uninvoicedTopUp = Math.max(0, uninvoicedTarget - uninvoicedBalance);
+  const totalTopUp = invoicedTopUp + uninvoicedTopUp;
+  const distributableResult = Math.max(0, periodResult - totalTopUp);
   const partnerRows = partnerProfiles.map((profile) => {
     const ownership = ownershipByProfile.get(String(profile.id));
     const percent = ownership ? Number(ownership.ownership_percent || 0) : fallbackPercent;
-    const share = periodResult * percent / 100;
+    const share = distributableResult * percent / 100;
     const salary = partnerPayroll.get(String(profile.id)) ?? Number(profile.base_salary || 0);
     return { id: String(profile.id), name: person(profile), percent, salary, share, total: salary + share, isFallback: !ownership };
   });
   const ownershipTotal = partnerRows.reduce((total, partner) => total + partner.percent, 0);
-  const balances = new Map(((balancesResult.data || []) as Row[]).map((b) => [String(b.account_id), Number(b.balance || 0)]));
-  const accountRows = ((accountsResult.data || []) as Row[]).map((a) => ({ name: String(a.name), balance: balances.get(String(a.id)) || 0, type: a.billing_preference }));
   const title = new Intl.DateTimeFormat("tr-TR", { year: "numeric", month: "long" }).format(new Date(year, month - 1));
   const prev = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
   const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
@@ -119,17 +137,48 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         <ClosingMetric label="Ay sonu net" value={cashIncome - uninvoicedCost - invoicedCost - payrollCost} tone={cashIncome - uninvoicedCost - invoicedCost - payrollCost >= 0 ? "green" : "red"} hint="Gelen − tüm giderler − maaş" strong />
       </section>
 
+      <section className="mb-6 grid gap-3 sm:grid-cols-3">
+        <ClosingMetric label="Ödemesi gelmeyen müşteri" value={unpaidClientCount} tone="red" hint="Bu aya ait açık müşteriler" format="count" />
+        <ClosingMetric label="Ödeme alamadığımız bakiye" value={openAmount} tone="red" hint="Bu ayın açık toplamı" />
+        <ClosingMetric label="Geçmiş aylardan kalan" value={previousOpenAmount} tone="orange" hint={`${previousOpen.length} eski açık ödeme`} />
+      </section>
+
+      <Card className="mb-6 overflow-hidden">
+        <div className="border-b bg-slate-50 px-5 py-4">
+          <h2 className="font-bold">Kasa tamamlama ve ortak dağıtımı</h2>
+          <p className="mt-1 text-xs text-slate-500">Kasa bakiyeleri ayın son günü itibarıyla hesaplanır. Sabit hedeflere ayrılan tutardan sonra kalan sonuç ortaklara dağıtılır.</p>
+        </div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+          <ClosingMetric label="Kasaları tamamlamak için" value={totalTopUp} tone="purple" hint="İki kasanın toplam ihtiyacı" strong />
+          <ClosingMetric label="Faturalı kasaya ayrılacak" value={invoicedTopUp} tone="blue" hint={`Bakiye ${formatMoney(invoicedBalance)} · Hedef ${formatMoney(invoicedTarget)}`} />
+          <ClosingMetric label="Faturasız kasaya ayrılacak" value={uninvoicedTopUp} tone="orange" hint={`Bakiye ${formatMoney(uninvoicedBalance)} · Hedef ${formatMoney(uninvoicedTarget)}`} />
+          <ClosingMetric label="Ortaklara bölünecek" value={distributableResult} tone={distributableResult >= 0 ? "green" : "red"} hint="Net sonuç − kasa tamamlama" strong />
+        </div>
+        <div className="border-t p-5">
+          <MonthCloseCashTargetForm year={year} month={month} invoicedTarget={invoicedTarget} uninvoicedTarget={uninvoicedTarget} />
+        </div>
+        <div className="grid gap-3 border-t bg-slate-50/60 p-5 md:grid-cols-3">
+          {partnerRows.map((partner) => (
+            <div key={partner.id} className="rounded-xl border bg-white p-4">
+              <div className="text-sm font-bold">{partner.name} alacak</div>
+              <div className={`mt-2 text-xl font-bold ${partner.total < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatMoney(partner.total)}</div>
+              <div className="mt-1 text-xs text-slate-500">Maaş {formatMoney(partner.salary)} + ortaklık payı {formatMoney(partner.share)}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       <section className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Kapanış sonucu, bu ay gerçekten tahsil edilen gelirden aya ait giderler ve tüm aktif maaşlar düşülerek hesaplanır.</p></div>
         <div className="grid divide-y lg:grid-cols-[1fr_260px] lg:divide-x lg:divide-y-0">
           <div className="divide-y">
             <ResultRow label="Bu ay tahsil edilen gelir" value={cashIncome} tone="green" hint={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi · Hizmet tahakkuku ${formatMoney(accruedIncome)}`} />
             <ResultRow label="Bu aya ait gider + maaş toplamı" value={totalPeriodCost} tone="blue" hint={`Manuel gider ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)} · Maaş ${formatMoney(payrollCost)}`} />
-            <ResultRow label="Ortaklara kalan dönem sonucu" value={periodResult} tone={periodResult >= 0 ? "green" : "red"} hint="Tahsil edilen gelir − bu aya ait giderler − tüm aktif maaşlar" strong />
+            <ResultRow label="Ortaklara kalan dönem sonucu" value={distributableResult} tone={distributableResult >= 0 ? "green" : "red"} hint="Tahsil edilen gelir − giderler − maaşlar − kasa tamamlama" strong />
           </div>
-          <div className={`flex flex-col justify-center p-6 ${periodResult >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
+          <div className={`flex flex-col justify-center p-6 ${distributableResult >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kişi başı eşit pay</span>
-            <b className={`mt-2 text-2xl ${periodResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatMoney(partnerRows.length ? periodResult / partnerRows.length : 0)}</b>
+            <b className={`mt-2 text-2xl ${distributableResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatMoney(partnerRows.length ? distributableResult / partnerRows.length : 0)}</b>
             <span className="mt-1 text-xs text-slate-500">Aktif {partnerRows.length} ortak · Toplam oran %{ownershipTotal.toFixed(2)}</span>
           </div>
         </div>
@@ -193,11 +242,14 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
 function MonthLink({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:border-[#CD0B16] hover:text-[#CD0B16]">{children}</Link>; }
 function ResultRow({ label, value, tone, hint, strong }: { label: string; value: number; tone: "green" | "blue" | "red"; hint?: string; strong?: boolean }) { const color = tone === "green" ? "text-emerald-700" : tone === "red" ? "text-red-700" : "text-blue-700"; return <div className={`flex items-center justify-between gap-4 px-5 py-4 ${strong ? "bg-slate-50" : ""}`}><div><div className={strong ? "font-bold" : "font-medium"}>{label}</div>{hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}</div><b className={`text-lg ${color}`}>{formatMoney(value)}</b></div>; }
 function Metric({ label, value, warning }: { label: string; value: string; warning?: boolean }) { return <Card className={`p-5 ${warning ? "border-red-200 bg-red-50/60" : ""}`}><div className="text-xs font-medium text-slate-500">{label}</div><div className={`mt-2 text-xl font-bold ${warning ? "text-red-700" : ""}`}>{value}</div></Card>; }
-function ClosingMetric({ label, value, tone, hint, strong }: { label: string; value: number; tone: "green" | "orange" | "blue" | "purple" | "red"; hint: string; strong?: boolean }) { const styles = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", orange: "border-orange-200 bg-orange-50 text-orange-800", blue: "border-blue-200 bg-blue-50 text-blue-800", purple: "border-violet-200 bg-violet-50 text-violet-800", red: "border-red-200 bg-red-50 text-red-800" }; return <Card className={`p-4 ${styles[tone]} ${strong ? "ring-1 ring-current/10" : ""}`}><div className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</div><div className="mt-2 text-xl font-bold">{formatMoney(value)}</div><div className="mt-1 text-[11px] opacity-70">{hint}</div></Card>; }
+function ClosingMetric({ label, value, tone, hint, strong, format = "money" }: { label: string; value: number; tone: "green" | "orange" | "blue" | "purple" | "red"; hint: string; strong?: boolean; format?: "money" | "count" }) { const styles = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", orange: "border-orange-200 bg-orange-50 text-orange-800", blue: "border-blue-200 bg-blue-50 text-blue-800", purple: "border-violet-200 bg-violet-50 text-violet-800", red: "border-red-200 bg-red-50 text-red-800" }; return <Card className={`p-4 ${styles[tone]} ${strong ? "ring-1 ring-current/10" : ""}`}><div className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</div><div className="mt-2 text-xl font-bold">{format === "money" ? formatMoney(value) : `${value} müşteri`}</div><div className="mt-1 text-[11px] opacity-70">{hint}</div></Card>; }
 function ReviewTable({ title, subtitle, rows, empty }: { title: string; subtitle: string; rows: { title: string; detail: string; amount: number }[]; empty: string }) { return <Card className="overflow-hidden"><div className="flex items-end justify-between border-b bg-slate-50 px-5 py-4"><div><h2 className="font-bold">{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><b>{formatMoney(rows.reduce((n, r) => n + r.amount, 0))}</b></div><div className="max-h-80 divide-y overflow-y-auto">{rows.map((r, i) => <div key={`${r.title}-${i}`} className="flex items-center justify-between gap-4 px-5 py-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{r.title}</div><div className="mt-0.5 truncate text-xs text-slate-400">{r.detail}</div></div><b className="shrink-0 text-sm">{formatMoney(r.amount)}</b></div>)}{!rows.length && <p className="p-6 text-center text-sm text-slate-400">{empty}</p>}</div></Card>; }
 function sum(rows: Row[], field: string) { return rows.reduce((n, r) => n + Number(r[field] || 0), 0); }
 function nestedSum(value: unknown) { return Array.isArray(value) ? value.reduce((n, r) => n + Number((r as Row).amount || 0), 0) : 0; }
 function relationName(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.company_name || v?.name || "—"); }
+function relationId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
+function periodIndex(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return Number(v?.year || 0) * 12 + Number(v?.month || 0); }
+function outstanding(row: Row) { return Math.max(0, Number(row.total_amount || 0) - nestedSum(row.payments)); }
 function profileId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
 function person(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return `${v?.first_name || ""} ${v?.last_name || ""}`.trim() || "Ortak"; }
 function date(value: unknown) { return value ? new Date(String(value)).toLocaleDateString("tr-TR") : "—"; }

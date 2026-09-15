@@ -85,3 +85,28 @@ export async function reopenMonth(
 export async function goToMonthClose(fd: FormData) {
   redirect(`/month-close/${fd.get("year")}/${fd.get("month")}`);
 }
+
+export async function updateMonthCloseCashTargets(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const parsed = z.object({
+    year: z.coerce.number().int(),
+    month: z.coerce.number().int().min(1).max(12),
+    invoiced_target: z.coerce.number().min(0),
+    uninvoiced_target: z.coerce.number().min(0),
+  }).safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: "Kasa hedeflerini kontrol edin." };
+  const s = await createClient();
+  const { data: { user } } = await s.auth.getUser();
+  const { error } = await s.from("month_close_settings").upsert({
+    id: true,
+    invoiced_cash_target: parsed.data.invoiced_target,
+    uninvoiced_cash_target: parsed.data.uninvoiced_target,
+    updated_by: user?.id || null,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) return { error: error.message };
+  revalidatePath(`/month-close/${parsed.data.year}/${parsed.data.month}`);
+  return { success: "Kasa hedefleri kaydedildi." };
+}
