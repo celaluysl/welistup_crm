@@ -24,7 +24,10 @@ export default async function Collections({
       ? parsedYear
       : now.getFullYear();
   const supabase = await createClient();
-  await supabase.rpc("generate_hosting_receivables");
+  const [{ error: periodGenerationError }] = await Promise.all([
+    supabase.rpc("generate_service_year_periods", { p_year: year }),
+    supabase.rpc("generate_hosting_receivables"),
+  ]);
   const [
     { data, error },
     { data: accounts },
@@ -210,9 +213,9 @@ export default async function Collections({
         </div>
         <YearPeriodButton year={year} />
       </div>
-      {error ? (
+      {error || periodGenerationError ? (
         <div className="rounded-xl border bg-white p-10 text-center text-sm text-red-600">
-          Tahsilat kayıtları yüklenemedi: {error.message}
+          Tahsilat kayıtları yüklenemedi: {(error || periodGenerationError)?.message}
         </div>
       ) : (
         <CollectionWorkspace
