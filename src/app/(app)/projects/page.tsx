@@ -43,9 +43,20 @@ type Project = {
 };
 
 type SearchParams = {
+  status?: string;
   service?: string;
   specialist?: string;
   view?: string;
+};
+
+const projectStatuses = ["active", "on_hold", "completed", "archived"] as const;
+type ProjectStatus = (typeof projectStatuses)[number];
+
+const projectStatusLabels: Record<ProjectStatus, string> = {
+  active: "Aktif",
+  on_hold: "Donduruldu",
+  completed: "Tamamlandı",
+  archived: "Arşivlendi",
 };
 
 export default async function Projects({
@@ -54,14 +65,24 @@ export default async function Projects({
   searchParams: Promise<SearchParams>;
 }) {
   const filters = await searchParams;
+  const selectedStatus: ProjectStatus | "all" =
+    filters.status === "all" ||
+    projectStatuses.includes(filters.status as ProjectStatus)
+      ? (filters.status as ProjectStatus | "all")
+      : "active";
   const supabase = await createClient();
-  const { data } = await supabase
+  let projectsQuery = supabase
     .from("projects")
     .select(
       "id,name,status,billing_preference,is_white_label,clients(company_name),project_services(service_id,status,services(name),project_service_prices(net_price,vat_rate,currency,effective_from,effective_to),project_service_members(profile_id,profiles(id,first_name,last_name,email)))",
     )
-    .neq("status", "archived")
     .order("created_at", { ascending: false });
+
+  if (selectedStatus !== "all") {
+    projectsQuery = projectsQuery.eq("status", selectedStatus);
+  }
+
+  const { data } = await projectsQuery;
 
   const projects = (data || []) as unknown as Project[];
   const services = uniqueServices(projects);
@@ -98,6 +119,22 @@ export default async function Projects({
               name="view"
               value={listView ? "list" : "grid"}
             />
+            <label className="min-w-0 flex-1">
+              <span className="mb-1.5 block text-xs font-semibold text-slate-500">
+                Proje durumuna göre filtrele
+              </span>
+              <select
+                name="status"
+                defaultValue={selectedStatus}
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#CD0B16] focus:ring-2 focus:ring-red-100"
+              >
+                <option value="active">Aktif projeler</option>
+                <option value="on_hold">Dondurulan projeler</option>
+                <option value="completed">Tamamlanan projeler</option>
+                <option value="archived">Arşivlenen projeler</option>
+                <option value="all">Tüm projeler</option>
+              </select>
+            </label>
             <label className="min-w-0 flex-1">
               <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                 <Funnel size={13} /> Hizmete göre filtrele
@@ -138,7 +175,9 @@ export default async function Projects({
             >
               Filtrele
             </button>
-            {(filters.service || filters.specialist) && (
+            {(selectedStatus !== "active" ||
+              filters.service ||
+              filters.specialist) && (
               <Link
                 href={`/projects?view=${listView ? "list" : "grid"}`}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-500 hover:bg-slate-50"
@@ -221,6 +260,9 @@ function ProjectCard({ project }: { project: Project }) {
           {service?.services?.name && (
             <ServiceBadge name={service.services.name} />
           )}
+          {project.status !== "active" && (
+            <ProjectStatusBadge status={project.status} />
+          )}
           {project.is_white_label && (
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
               White-label
@@ -263,6 +305,7 @@ function ProjectTable({ projects }: { projects: Project[] }) {
               {[
                 "Proje",
                 "Müşteri",
+                "Durum",
                 "Hizmet",
                 "Sorumlu uzman",
                 "Proje bedeli",
@@ -292,6 +335,9 @@ function ProjectTable({ projects }: { projects: Project[] }) {
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     {project.clients?.company_name || "—"}
+                  </td>
+                  <td className="px-5 py-4">
+                    <ProjectStatusBadge status={project.status} />
                   </td>
                   <td className="px-5 py-4">
                     {service?.services?.name ? (
@@ -344,6 +390,21 @@ function ServiceBadge({ name }: { name: string }) {
   return (
     <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-[#CD0B16]">
       {name}
+    </span>
+  );
+}
+
+function ProjectStatusBadge({ status }: { status: string }) {
+  const label = projectStatusLabels[status as ProjectStatus] || status;
+  const colors =
+    status === "active"
+      ? "bg-emerald-50 text-emerald-700"
+      : status === "on_hold"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-100 text-slate-600";
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${colors}`}>
+      {label}
     </span>
   );
 }
@@ -434,6 +495,7 @@ function uniqueSpecialists(projects: Project[]) {
 
 function viewHref(filters: SearchParams, view: "grid" | "list") {
   const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
   if (filters.service) params.set("service", filters.service);
   if (filters.specialist) params.set("specialist", filters.specialist);
   params.set("view", view);
