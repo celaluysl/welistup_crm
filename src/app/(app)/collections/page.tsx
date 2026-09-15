@@ -35,7 +35,7 @@ export default async function Collections({
     supabase
       .from("receivables")
       .select(
-        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(company_name),projects(name),payments(id,amount,payment_date,account_id,notes,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
+        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(id,company_name),projects(name),payments(id,amount,payment_date,account_id,notes,bulk_transaction_id,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
       )
       .eq("service_periods.year", year)
       .order("due_date", { ascending: true, nullsFirst: false }),
@@ -65,7 +65,7 @@ export default async function Collections({
       .lte("payment_date", `${year}-12-31`)
       .order("payment_date"),
   ]);
-  const rows: CollectionRow[] = (data || []).map((record) => {
+  const detailRows: CollectionRow[] = (data || []).map((record) => {
     const period = relation(record.service_periods) as {
       year: number;
       month: number;
@@ -80,6 +80,7 @@ export default async function Collections({
       accountId: payment.account_id,
       accountName: relation(payment.accounts)?.name || null,
       notes: payment.notes,
+      bulkTransactionId: payment.bulk_transaction_id,
     }));
     const excessReceipts = (record.unallocated_customer_receipts || []).map(
       (receipt) => ({
@@ -99,6 +100,7 @@ export default async function Collections({
     );
     return {
       id: record.id,
+      clientId: relation(record.clients)?.id || "",
       projectServiceId: period.project_service_id,
       month: period.month,
       client: relation(record.clients)?.company_name || "—",
@@ -116,6 +118,22 @@ export default async function Collections({
       excessReceipts,
     };
   });
+  const rows = [...detailRows.reduce((map, row) => {
+    const key = `${row.clientId}:${row.month}:${row.billing}:${row.currency}`;
+    const customerGroupKey = `${row.clientId}:${row.billing}:${row.currency}`;
+    const current = map.get(key);
+    if (!current) map.set(key, { ...row, projectServiceId: customerGroupKey, project: row.project, service: row.service, payments: [...row.payments], excessReceipts: [...row.excessReceipts], items: [row] });
+    else {
+      current.total += row.total; current.paid += row.paid;
+      current.payments.push(...row.payments); current.excessReceipts.push(...row.excessReceipts);
+      current.items!.push(row);
+      current.project = `${current.items!.length} proje / hizmet`;
+      current.service = [...new Set(current.items!.map((item) => item.service))].join(" + ");
+      if (row.dueDate && (!current.dueDate || row.dueDate < current.dueDate)) current.dueDate = row.dueDate;
+      current.status = current.paid >= current.total ? "paid" : current.paid > 0 ? "partial" : current.items!.some((item) => item.status === "overdue") ? "overdue" : "pending";
+    }
+    return map;
+  }, new Map<string, CollectionRow>()).values()];
   const hostingRows: HostingReceivableRow[] = (hostingReceivables || []).map(
     (record) => ({
       id: record.id,
@@ -208,6 +226,7 @@ function relation(value: unknown) {
   return (Array.isArray(value) ? value[0] : value) as {
     company_name?: string;
     name?: string;
+    id?: string;
     domain?: string;
     account_label?: string;
   } | null;

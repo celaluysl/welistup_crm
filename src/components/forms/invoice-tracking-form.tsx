@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useState } from "react";
-import { saveInvoiceTracking } from "@/lib/actions/invoices";
+import { saveInvoiceTracking, saveInvoiceTrackingBulk } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 type Invoice = {
@@ -14,12 +14,14 @@ export function InvoiceTrackingForm({
   periodId,
   invoice,
   defaultDueDate,
+  periodIds,
 }: {
   periodId: string;
   invoice: Invoice;
   defaultDueDate: string | null;
+  periodIds?: string[];
 }) {
-  const [state, action, pending] = useActionState(saveInvoiceTracking, null);
+  const [state, action, pending] = useActionState(periodIds?.length ? saveInvoiceTrackingBulk : saveInvoiceTracking, null);
   const [status, setStatus] = useState(invoice?.status || "waiting");
   return (
     <form
@@ -27,6 +29,7 @@ export function InvoiceTrackingForm({
       className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2"
     >
       <input type="hidden" name="service_period_id" value={periodId} />
+      {periodIds?.length ? <input type="hidden" name="service_period_ids" value={JSON.stringify(periodIds)} /> : null}
       <Field label="Fatura durumu">
         <select
           name="status"

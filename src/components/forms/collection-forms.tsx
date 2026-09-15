@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, cancelPayment, classifyUnallocatedReceipt, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
+import { addCollectionActivity, cancelPayment, classifyUnallocatedReceipt, recordBulkPayment, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -90,6 +90,22 @@ export function PaymentForm({
   );
 }
 
+export function BulkPaymentForm({ receivableIds, maxAmount, accounts, onSuccess }: { receivableIds: string[]; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess?: () => void }) {
+  const [state, action, pending] = useActionState(recordBulkPayment, null);
+  const [fullPayment, setFullPayment] = useState(true);
+  const [amount, setAmount] = useState(String(maxAmount));
+  useEffect(() => { if (state?.success) onSuccess?.(); }, [state?.success, onSuccess]);
+  return <form action={action} className="grid gap-4 sm:grid-cols-2">
+    <input type="hidden" name="receivable_ids" value={JSON.stringify(receivableIds)} />
+    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 sm:col-span-2"><input type="checkbox" checked={fullPayment} onChange={(event) => { setFullPayment(event.target.checked); setAmount(event.target.checked ? String(maxAmount) : ""); }} className="h-5 w-5 accent-emerald-600"/>Ödemenin tamamı alındı<span className="ml-auto text-xs font-medium">Tüm hizmetlerin kalanını kullan</span></label>
+    <Field label="Tahsil edilen toplam"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} readOnly={fullPayment} className={`${inputClass} ${fullPayment ? "bg-slate-100 text-slate-500" : ""}`}/></Field>
+    <Field label="Ödemenin geldiği kasa"><select name="account_id" required className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
+    <Field label="Gerçek ödeme tarihi"><input name="payment_date" type="date" required defaultValue={new Date().toISOString().slice(0,10)} className={inputClass}/></Field>
+    <Field label="Not"><input name="notes" placeholder="Aylık toplu müşteri tahsilatı" className={inputClass}/></Field>
+    <Result state={state}/><div className="sm:col-span-2"><Button disabled={pending}>{pending ? "Kaydediliyor…" : fullPayment ? "Tamamını tahsil et" : "Toplu ödemeyi kaydet"}</Button></div>
+  </form>;
+}
+
 export function CollectionActivityForm({
   receivableId,
 }: {
@@ -133,11 +149,11 @@ export function CollectionActivityForm({
   );
 }
 
-export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCancel }: { payment: { id: string; amount: number; paymentDate: string; accountId: string | null; notes: string | null }; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess: () => void; onCancel: () => void }) {
+export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCancel }: { payment: { id: string; amount: number; paymentDate: string; accountId: string | null; notes: string | null; bulkTransactionId?: string | null }; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess: () => void; onCancel: () => void }) {
   const [state, action, pending] = useActionState(updatePayment, null);
   const [cancelState, cancelAction, cancelling] = useActionState(cancelPayment, null);
   useEffect(() => { if (state?.success || cancelState?.success) onSuccess(); }, [state?.success, cancelState?.success, onSuccess]);
-  return <><form action={action} className="grid gap-4 sm:grid-cols-2">
+  return <>{!payment.bulkTransactionId && <form action={action} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="payment_id" value={payment.id} />
     <Field label="Tahsil edilen tutar"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required defaultValue={payment.amount} className={inputClass} /></Field>
     <Field label="Ödemenin geldiği kasa"><select name="account_id" required defaultValue={payment.accountId || ""} className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
@@ -145,9 +161,9 @@ export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCan
     <Field label="Not"><input name="notes" defaultValue={payment.notes || ""} className={inputClass} /></Field>
     <Result state={state} />
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Ödemeyi güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
-  </form><form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
+  </form>}<form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
     <input type="hidden" name="payment_id" value={payment.id} />
-    <div><b className="text-sm text-red-700">Ödeme aslında gelmediyse</b><p className="mt-1 text-xs text-slate-500">Tahsilatı iptal etmek alacağı yeniden açar ve kasa bakiyesini geri düzeltir.</p></div>
+    <div><b className="text-sm text-red-700">Ödeme aslında gelmediyse</b><p className="mt-1 text-xs text-slate-500">Tahsilatı iptal etmek alacağı yeniden açar ve kasa bakiyesini geri düzeltir.{payment.bulkTransactionId ? " Bu kayıt toplu ödemenin ilgili hizmete ayrılan parçasıdır." : ""}</p></div>
     <Field label="İptal nedeni"><input name="cancellation_reason" required minLength={3} placeholder="Örn. Ödeme yanlışlıkla işlendi" className={inputClass} /></Field>
     {cancelState?.error && <p className="text-sm text-red-600">{cancelState.error}</p>}
     <div><Button type="submit" variant="danger" disabled={cancelling} onClick={(event) => { if (!window.confirm("Bu tahsilatı iptal edip alacağı yeniden açmak istiyor musunuz?")) event.preventDefault(); }}>{cancelling ? "İptal ediliyor…" : "Tahsilatı iptal et"}</Button></div>

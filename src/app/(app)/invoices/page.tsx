@@ -8,6 +8,7 @@ const labels: Record<string, string> = {
   payment_pending: "Ödeme bekleniyor",
   partial: "Kısmi ödeme",
   paid: "Ödendi",
+  cancelled: "Fatura iptal edildi",
 };
 export default async function Invoices({
   searchParams,
@@ -22,13 +23,13 @@ export default async function Invoices({
   let query = s
     .from("service_periods")
     .select(
-      "id,year,month,gross_amount,currency,due_date,invoice_status,clients(company_name),projects(name),services(name),invoices(invoice_number,invoice_date,due_date,status,notes)",
+      "id,year,month,gross_amount,currency,due_date,invoice_status,clients(id,company_name),projects(name),services(name),invoices(invoice_number,invoice_date,due_date,status,notes)",
     )
     .eq("year", year)
     .eq("month", month)
     .order("created_at");
   if (
-    ["waiting", "issued", "payment_pending", "partial", "paid"].includes(
+    ["waiting", "issued", "payment_pending", "partial", "paid", "cancelled"].includes(
       q.status || "",
     )
   )
@@ -73,7 +74,7 @@ export default async function Invoices({
           </button>
         </form>
       </Card>
-      <InvoiceWorkspace rows={(data || []).map((r): InvoiceWorkspaceRow => ({ id: r.id, client: one(r.clients)?.company_name || "—", project: one(r.projects)?.name || "—", service: one(r.services)?.name || "Hizmet", year: r.year, month: r.month, amount: Number(r.gross_amount), currency: r.currency, dueDate: r.due_date, status: r.invoice_status, invoice: one(r.invoices) }))}/>
+      <InvoiceWorkspace rows={groupInvoices((data || []).map((r): InvoiceWorkspaceRow & {clientId:string} => ({ id: r.id, clientId:one(r.clients)?.id||"", client: one(r.clients)?.company_name || "—", project: one(r.projects)?.name || "—", service: one(r.services)?.name || "Hizmet", year: r.year, month: r.month, amount: Number(r.gross_amount), currency: r.currency, dueDate: r.due_date, status: r.invoice_status, invoice: one(r.invoices) })))}/>
       {(!data?.length || error) && (
         <Card className="p-10 text-center text-sm text-slate-500">
           {error
@@ -87,6 +88,7 @@ export default async function Invoices({
 function one(v: unknown) {
   return (Array.isArray(v) ? v[0] : v) as {
     company_name?: string;
+    id?: string;
     name?: string;
     invoice_number?: string | null;
     invoice_date?: string | null;
@@ -95,3 +97,4 @@ function one(v: unknown) {
     notes?: string | null;
   } | null;
 }
+function groupInvoices(rows:(InvoiceWorkspaceRow&{clientId:string})[]):InvoiceWorkspaceRow[]{return[...rows.reduce((map,row)=>{const key=`${row.clientId}:${row.year}:${row.month}:${row.currency}`;const current=map.get(key);if(!current)map.set(key,{...row,items:[row]});else{current.amount+=row.amount;current.items!.push(row);current.project=`${current.items!.length} proje / hizmet`;current.service=[...new Set(current.items!.map((item)=>item.service))].join(" + ");if(row.dueDate&&(!current.dueDate||row.dueDate<current.dueDate))current.dueDate=row.dueDate;if(row.status!==current.status)current.status="mixed";}return map;},new Map<string,InvoiceWorkspaceRow>()).values()];}

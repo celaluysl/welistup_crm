@@ -109,6 +109,19 @@ export async function recordPayment(
   return { success: "Ödeme kaydedildi." };
 }
 
+export async function recordBulkPayment(_: State, formData: FormData): Promise<State> {
+  const parsed = z.object({
+    receivable_ids: z.string().transform((value, ctx) => { try { return z.array(z.string().uuid()).min(1).parse(JSON.parse(value)); } catch { ctx.addIssue({ code: "custom", message: "Geçersiz alacak listesi." }); return z.NEVER; } }),
+    account_id: z.string().uuid(), amount: z.coerce.number().positive(), payment_date: z.string().date(), notes: z.string().trim().max(1000).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Toplu ödeme bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("record_receivables_bulk_payment", { p_receivable_ids: parsed.data.receivable_ids, p_account_id: parsed.data.account_id, p_amount: parsed.data.amount, p_payment_date: parsed.data.payment_date, p_notes: parsed.data.notes || null });
+  if (error) return { error: error.message.includes("invalid_payment_amount") ? "Tutar toplam kalan alacağı aşamaz." : error.message.includes("mixed_customer_or_currency") ? "Kayıtlar aynı müşteri ve para biriminde olmalı." : error.message };
+  revalidatePath("/collections"); revalidatePath("/accounts"); revalidatePath("/transactions"); revalidatePath("/month-close", "layout");
+  return { success: "Müşteri ödemesi tek kasa hareketiyle kaydedildi." };
+}
+
 export async function updatePayment(
   _: State,
   formData: FormData,

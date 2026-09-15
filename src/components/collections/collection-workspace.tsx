@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Grid3X3, List, Pencil, Search, X } from "lucide-react";
 import {
   PaymentEditForm,
+  BulkPaymentForm,
   PaymentForm,
   ReceiptClassificationForm,
   UnallocatedReceiptEditForm,
@@ -13,6 +14,7 @@ import { formatMoney } from "@/lib/utils";
 
 export type CollectionRow = {
   id: string;
+  clientId: string;
   projectServiceId: string;
   month: number;
   client: string;
@@ -33,6 +35,7 @@ export type CollectionRow = {
     accountId: string | null;
     accountName: string | null;
     notes: string | null;
+    bulkTransactionId?: string | null;
   }[];
   excessReceipts: {
     id: string;
@@ -45,6 +48,7 @@ export type CollectionRow = {
     notes: string | null;
     matchedService: string | null;
   }[];
+  items?: CollectionRow[];
 };
 type Account = { id: string; name: string; currency: string };
 type HostingPaymentTotal = {
@@ -134,6 +138,7 @@ export function CollectionWorkspace({
     const map = new Map<
       string,
       {
+        key: string;
         client: string;
         project: string;
         service: string;
@@ -143,6 +148,7 @@ export function CollectionWorkspace({
     >();
     filtered.forEach((row) => {
       const current = map.get(row.projectServiceId) || {
+        key: row.projectServiceId,
         client: row.client,
         project: row.project,
         service: row.service,
@@ -283,7 +289,7 @@ export function CollectionWorkspace({
               </tr>
               {groups.map((group) => (
                 <tr
-                  key={`${group.project}-${group.service}`}
+                  key={group.key}
                   className="border-b last:border-0"
                 >
                   <td className="sticky left-0 z-10 border-r bg-white px-4 py-3">
@@ -540,6 +546,7 @@ function PaymentModal({
   onSaved: () => void;
 }) {
   const remaining = Math.max(0, row.total - row.paid);
+  const detailItems = row.items || [row];
   const excessTotal = row.excessReceipts.reduce(
     (sum, receipt) => sum + receipt.remainingAmount,
     0,
@@ -617,18 +624,24 @@ function PaymentModal({
           {remaining > 0 ? (
             <>
               <h3 className="mb-4 font-semibold">Ödeme kaydet</h3>
-              <PaymentForm
+              {detailItems.length > 1 ? <BulkPaymentForm
+                receivableIds={detailItems.map((item) => item.id)}
+                maxAmount={remaining}
+                accounts={accounts}
+                onSuccess={onSaved}
+              /> : <PaymentForm
                 receivableId={row.id}
                 maxAmount={remaining}
                 accounts={accounts}
                 onSuccess={onSaved}
-              />
+              />}
             </>
           ) : (
             <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">
               Bu dönem tamamen tahsil edildi.
             </div>
           )}
+          {detailItems.length > 1 && <div className="mt-6 border-t pt-5"><h3 className="mb-3 font-semibold">Fatura / hizmet detayı</h3><div className="space-y-2">{detailItems.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3 text-sm"><div><b>{item.project}</b><div className="text-xs text-slate-500">{item.service}</div></div><div className="text-right"><b>{formatMoney(item.total,item.currency)}</b><div className="text-xs text-slate-500">Kalan {formatMoney(Math.max(0,item.total-item.paid),item.currency)}</div></div></div>)}</div></div>}
           <div className="mt-6 border-t pt-5">
             <h3 className="mb-3 flex items-center gap-2 font-semibold">
               <CalendarDays size={16} />
