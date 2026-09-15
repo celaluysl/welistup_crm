@@ -19,9 +19,8 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, periodsResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balanceTransactionsResult, settingsResult] = await Promise.all([
+  const [closeResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balanceTransactionsResult, settingsResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
-    s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(company_name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
@@ -35,7 +34,6 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   ]);
 
   const close = closeResult.data;
-  const periods = (periodsResult.data || []) as Row[];
   const transactions = (transactionsResult.data || []) as Row[];
   const expenses = (expensesResult.data || []) as Row[];
   const vendors = (vendorsResult.data || []) as Row[];
@@ -48,8 +46,6 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const partnerProfiles = salaryProfiles.filter((profile) => profile.employment_type === "partner");
 
   const cashIncome = sum(transactions.filter((r) => r.transaction_type === "income"), "amount");
-  const cashExpense = Math.abs(sum(transactions.filter((r) => r.transaction_type === "expense"), "amount"));
-  const accruedIncome = sum(periods, "gross_amount");
   const manualCost = sum(expenses, "amount");
   const vendorCost = sum(vendors, "amount");
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
@@ -76,13 +72,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const operatingCost = manualCost + vendorCost;
   const totalPeriodCost = operatingCost + payrollCost;
   const periodResult = cashIncome - totalPeriodCost;
-  const cashResult = cashIncome - cashExpense;
   const openAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
-  const overdueAmount = overdue
-    .filter((r) => String(r.due_date || "") <= end)
-    .reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
-  const invoiceWaiting = periods.filter((r) => r.invoice_status === "waiting").length;
-  const collectionWaiting = periods.filter((r) => r.collection_status !== "paid").length;
   const unpaidClientCount = new Set(overdue.map((row) => relationId(row.clients)).filter(Boolean)).size;
   const previousOpenAmount = previousOpen.reduce((total, row) => total + outstanding(row), 0);
   const partnerPayroll = new Map(payroll.filter((r) => r.employment_type === "partner").map((r) => [profileId(r.profiles), Number(r.net_payable || 0)]));
@@ -113,7 +103,6 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     const salary = partnerPayroll.get(String(profile.id)) ?? Number(profile.base_salary || 0);
     return { id: String(profile.id), name: person(profile), percent, salary, share, total: salary + share, isFallback: !ownership };
   });
-  const ownershipTotal = partnerRows.reduce((total, partner) => total + partner.percent, 0);
   const title = new Intl.DateTimeFormat("tr-TR", { year: "numeric", month: "long" }).format(new Date(year, month - 1));
   const prev = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
   const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
@@ -168,58 +157,6 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         </div>
       </Card>
 
-      <section className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Kapanış sonucu, bu ay gerçekten tahsil edilen gelirden aya ait giderler ve tüm aktif maaşlar düşülerek hesaplanır.</p></div>
-        <div className="grid divide-y lg:grid-cols-[1fr_260px] lg:divide-x lg:divide-y-0">
-          <div className="divide-y">
-            <ResultRow label="Bu ay tahsil edilen gelir" value={cashIncome} tone="green" hint={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi · Hizmet tahakkuku ${formatMoney(accruedIncome)}`} />
-            <ResultRow label="Bu aya ait gider + maaş toplamı" value={totalPeriodCost} tone="blue" hint={`Manuel gider ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)} · Maaş ${formatMoney(payrollCost)}`} />
-            <ResultRow label="Ortaklara kalan dönem sonucu" value={distributableResult} tone={distributableResult >= 0 ? "green" : "red"} hint="Tahsil edilen gelir − giderler − maaşlar − kasa tamamlama" strong />
-          </div>
-          <div className={`flex flex-col justify-center p-6 ${distributableResult >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kişi başı eşit pay</span>
-            <b className={`mt-2 text-2xl ${distributableResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatMoney(partnerRows.length ? distributableResult / partnerRows.length : 0)}</b>
-            <span className="mt-1 text-xs text-slate-500">Aktif {partnerRows.length} ortak · Toplam oran %{ownershipTotal.toFixed(2)}</span>
-          </div>
-        </div>
-        <div className="border-t bg-slate-50/60 p-5">
-          <div className="mb-4">
-            <h3 className="font-bold">Ortakların aylık gelirleri</h3>
-            <p className="mt-1 text-xs text-slate-500">Sabit maaş ile dönem sonucundan gelen ortaklık payı birlikte hesaplanır.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {partnerRows.map((partner) => (
-              <div key={partner.id} className="rounded-xl border bg-white p-5 shadow-sm">
-                <div className="text-base font-bold text-slate-900">{partner.name}</div>
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-slate-500">Maaş</span><b>{formatMoney(partner.salary)}</b></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-500">Ortaklık payı <small>· %{partner.percent.toFixed(2)}</small></span><b className={partner.share < 0 ? "text-red-600" : "text-emerald-700"}>{formatMoney(partner.share)}</b></div>
-                </div>
-                <div className={`mt-4 rounded-lg p-4 ${partner.total < 0 ? "bg-red-50" : "bg-emerald-50"}`}>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Toplam gelir</div>
-                  <div className={`mt-1 text-xl font-bold ${partner.total < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatMoney(partner.total)}</div>
-                  <div className="mt-1 text-xs text-slate-400">Maaş + ortaklık payı</div>
-                </div>
-              </div>
-            ))}
-            {!partnerRows.length && <p className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-700 md:col-span-3">Bu ay için aktif ortaklık oranı bulunamadı.</p>}
-          </div>
-          {partnerRows.some((partner) => partner.isFallback) && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Bazı ortakların bu ay için dönemsel ortaklık kaydı bulunamadığı için oranlar aktif ortaklar arasında eşit kabul edildi. Kalıcı oranları Yönetim → Ortaklar ekranından doğrulayabilirsiniz.</p>}
-        </div>
-      </section>
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Bu ay kasaya giren" value={formatMoney(cashIncome)} />
-        <Metric label="Bu ay kasadan çıkan" value={formatMoney(cashExpense)} />
-        <Metric label="Net kasa hareketi" value={formatMoney(cashResult)} warning={cashResult < 0} />
-        <Metric label="Vadesi geçmiş alacak" value={formatMoney(overdueAmount)} warning={overdueAmount > 0} />
-      </div>
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
-        <Metric label="Bekleyen fatura kontrolü" value={`${invoiceWaiting} kayıt`} warning={invoiceWaiting > 0} />
-        <Metric label="Bekleyen tahsilat kontrolü" value={`${collectionWaiting} kayıt`} warning={collectionWaiting > 0} />
-      </div>
-
       <div className="mb-6 grid gap-5 xl:grid-cols-2">
         <ReviewTable title="Gelir ve tahsilatlar" subtitle={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi`} rows={transactions.filter((r) => r.transaction_type === "income").map((r) => ({ title: String(r.description || r.category || "Tahsilat"), detail: `${date(r.transaction_date)} · ${relationName(r.accounts)}`, amount: Number(r.amount || 0) }))} empty="Bu ay tahsilat kaydı yok." />
         <ReviewTable title="Gider tahakkukları" subtitle={`Manuel ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)}`} rows={[...expenses.map((r) => ({ title: String(r.name), detail: `${r.category} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) })), ...vendors.map((r) => ({ title: relationName(r.vendors), detail: `${relationName(r.projects)} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) }))]} empty="Bu ay gider tahakkuku yok." />
@@ -240,8 +177,6 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
 }
 
 function MonthLink({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:border-[#CD0B16] hover:text-[#CD0B16]">{children}</Link>; }
-function ResultRow({ label, value, tone, hint, strong }: { label: string; value: number; tone: "green" | "blue" | "red"; hint?: string; strong?: boolean }) { const color = tone === "green" ? "text-emerald-700" : tone === "red" ? "text-red-700" : "text-blue-700"; return <div className={`flex items-center justify-between gap-4 px-5 py-4 ${strong ? "bg-slate-50" : ""}`}><div><div className={strong ? "font-bold" : "font-medium"}>{label}</div>{hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}</div><b className={`text-lg ${color}`}>{formatMoney(value)}</b></div>; }
-function Metric({ label, value, warning }: { label: string; value: string; warning?: boolean }) { return <Card className={`p-5 ${warning ? "border-red-200 bg-red-50/60" : ""}`}><div className="text-xs font-medium text-slate-500">{label}</div><div className={`mt-2 text-xl font-bold ${warning ? "text-red-700" : ""}`}>{value}</div></Card>; }
 function ClosingMetric({ label, value, tone, hint, strong, format = "money" }: { label: string; value: number; tone: "green" | "orange" | "blue" | "purple" | "red"; hint: string; strong?: boolean; format?: "money" | "count" }) { const styles = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", orange: "border-orange-200 bg-orange-50 text-orange-800", blue: "border-blue-200 bg-blue-50 text-blue-800", purple: "border-violet-200 bg-violet-50 text-violet-800", red: "border-red-200 bg-red-50 text-red-800" }; return <Card className={`p-4 ${styles[tone]} ${strong ? "ring-1 ring-current/10" : ""}`}><div className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</div><div className="mt-2 text-xl font-bold">{format === "money" ? formatMoney(value) : `${value} müşteri`}</div><div className="mt-1 text-[11px] opacity-70">{hint}</div></Card>; }
 function ReviewTable({ title, subtitle, rows, empty }: { title: string; subtitle: string; rows: { title: string; detail: string; amount: number }[]; empty: string }) { return <Card className="overflow-hidden"><div className="flex items-end justify-between border-b bg-slate-50 px-5 py-4"><div><h2 className="font-bold">{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><b>{formatMoney(rows.reduce((n, r) => n + r.amount, 0))}</b></div><div className="max-h-80 divide-y overflow-y-auto">{rows.map((r, i) => <div key={`${r.title}-${i}`} className="flex items-center justify-between gap-4 px-5 py-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{r.title}</div><div className="mt-0.5 truncate text-xs text-slate-400">{r.detail}</div></div><b className="shrink-0 text-sm">{formatMoney(r.amount)}</b></div>)}{!rows.length && <p className="p-6 text-center text-sm text-slate-400">{empty}</p>}</div></Card>; }
 function sum(rows: Row[], field: string) { return rows.reduce((n, r) => n + Number(r[field] || 0), 0); }
