@@ -219,11 +219,17 @@ export async function updateProject(
       .update({ status: serviceStatus, end_date: endDate })
       .eq("project_id", id);
     if (serviceStatusError) return { error: serviceStatusError.message };
-    if (projectService) {
+    const { data: projectServiceRows, error: projectServicesError } = await s
+      .from("project_services")
+      .select("id")
+      .eq("project_id", id);
+    if (projectServicesError) return { error: projectServicesError.message };
+    const projectServiceIds = (projectServiceRows || []).map((item) => item.id);
+    if (projectServiceIds.length) {
       const { error: assignmentStatusError } = await s
         .from("vendor_assignments")
         .update({ status: serviceStatus, end_date: endDate })
-        .eq("project_service_id", projectService.id);
+        .in("project_service_id", projectServiceIds);
       if (assignmentStatusError) return { error: assignmentStatusError.message };
     }
   }
