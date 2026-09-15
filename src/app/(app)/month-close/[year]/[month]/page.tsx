@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { startMonthClose, setChecklistItem, reopenMonth } from "@/lib/actions/month-close";
 import { MonthCloseForm } from "@/components/forms/month-close-form";
-import { MonthCloseCashTargetForm } from "@/components/forms/month-close-cash-target-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
@@ -19,18 +18,19 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, balanceTransactionsResult, settingsResult] = await Promise.all([
+  const [closeResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, cashReceivablesResult, hostingPaymentsResult, manualIncomesResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
+    s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount,payment_channel)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(id,company_name),projects(name),service_periods!inner(year,month)").neq("status", "paid"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status,opening_balance").eq("status", "active"),
-    s.from("finance_transactions").select("account_id,amount").lte("transaction_date", end),
-    s.from("month_close_settings").select("invoiced_cash_target,uninvoiced_cash_target").eq("id", true).maybeSingle(),
+    s.from("receivables").select("payments(amount,payment_date,counts_as_cash),unallocated_customer_receipts(amount,received_date,status),projects!inner(status),service_periods!inner(year,month)").eq("service_periods.year", year).gte("service_periods.month", year === 2026 ? 8 : 1).eq("projects.status", "active"),
+    s.from("hosting_payments").select("amount,payment_date").gte("payment_date", start).lte("payment_date", end),
+    s.from("manual_incomes").select("amount,payment_date").gte("payment_date", start).lte("payment_date", end),
   ]);
 
   const close = closeResult.data;
@@ -40,23 +40,33 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const payroll = (payrollResult.data || []) as Row[];
   const allOpenReceivables = (overdueResult.data || []) as Row[];
   const overdue = allOpenReceivables.filter((row) => periodIndex(row.service_periods) === year * 12 + month);
-  const previousOpen = allOpenReceivables.filter((row) => periodIndex(row.service_periods) < year * 12 + month);
+  const crmStartPeriod = 2026 * 12 + 8;
+  const previousOpen = allOpenReceivables.filter((row) => {
+    const index = periodIndex(row.service_periods);
+    return index >= crmStartPeriod && index < year * 12 + month;
+  });
   const ownerships = (ownershipResult.data || []) as Row[];
   const salaryProfiles = (salaryProfilesResult.data || []) as Row[];
   const partnerProfiles = salaryProfiles.filter((profile) => profile.employment_type === "partner");
 
-  const cashIncome = sum(transactions.filter((r) => r.transaction_type === "income"), "amount");
+  const collectionCash = ((cashReceivablesResult.data || []) as Row[]).reduce((total, receivable) => {
+    const payments = Array.isArray(receivable.payments) ? receivable.payments as Row[] : [];
+    const receipts = Array.isArray(receivable.unallocated_customer_receipts) ? receivable.unallocated_customer_receipts as Row[] : [];
+    return total +
+      payments.filter((payment) => payment.counts_as_cash !== false && inDateRange(payment.payment_date, start, end)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) +
+      receipts.filter((receipt) => receipt.status !== "refunded" && inDateRange(receipt.received_date, start, end)).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0);
+  }, 0);
+  const cashIncome = collectionCash + sum((hostingPaymentsResult.data || []) as Row[], "amount") + sum((manualIncomesResult.data || []) as Row[], "amount");
   const manualCost = sum(expenses, "amount");
   const vendorCost = sum(vendors, "amount");
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
   const payrollRowsByProfile = new Map(payroll.map((row) => [profileId(row.profiles), row]));
   const payrollCost = salaryProfiles.reduce((total, profile) => total + (payrollByProfile.get(String(profile.id)) ?? Number(profile.base_salary || 0)), 0);
-  const invoicedCost =
-    sum(expenses.filter((row) => row.billing_preference === "invoiced"), "amount") +
-    sum(vendors.filter((row) => row.billing_preference === "invoiced"), "amount");
-  const uninvoicedCost =
-    sum(expenses.filter((row) => row.billing_preference === "uninvoiced"), "amount") +
-    sum(vendors.filter((row) => row.billing_preference === "uninvoiced"), "amount");
+  const paidExpense = (billing: "invoiced" | "uninvoiced") =>
+    expenses.filter((row) => row.billing_preference === billing).reduce((total, row) => total + nestedSum(row.manual_expense_payments), 0) +
+    vendors.filter((row) => row.billing_preference === billing).reduce((total, row) => total + vendorCashPaid(row.vendor_payments), 0);
+  const invoicedCost = paidExpense("invoiced");
+  const uninvoicedCost = paidExpense("uninvoiced");
   const salaryRows = salaryProfiles.map((profile) => {
     const payrollRow = payrollRowsByProfile.get(String(profile.id));
     const employmentType = String(profile.employment_type) === "partner" ? "Ortak" : "Çalışan";
@@ -69,31 +79,18 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       amount: payrollRow ? Number(payrollRow.net_payable || 0) : Number(profile.base_salary || 0),
     };
   });
-  const operatingCost = manualCost + vendorCost;
-  const totalPeriodCost = operatingCost + payrollCost;
-  const periodResult = cashIncome - totalPeriodCost;
+  const periodResult = cashIncome - payrollCost;
   const openAmount = overdue.reduce((total, r) => total + Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)), 0);
   const unpaidClientCount = new Set(overdue.map((row) => relationId(row.clients)).filter(Boolean)).size;
   const previousOpenAmount = previousOpen.reduce((total, row) => total + outstanding(row), 0);
   const partnerPayroll = new Map(payroll.filter((r) => r.employment_type === "partner").map((r) => [profileId(r.profiles), Number(r.net_payable || 0)]));
   const ownershipByProfile = new Map(ownerships.map((o) => [String(o.profile_id), o]));
   const fallbackPercent = partnerProfiles.length ? 100 / partnerProfiles.length : 0;
-  const accountMovement = new Map<string, number>();
-  for (const row of (balanceTransactionsResult.data || []) as Row[]) {
-    const id = String(row.account_id || "");
-    accountMovement.set(id, (accountMovement.get(id) || 0) + Number(row.amount || 0));
-  }
-  const accountRows = ((accountsResult.data || []) as Row[]).map((account) => ({
-    name: String(account.name),
-    balance: Number(account.opening_balance || 0) + (accountMovement.get(String(account.id)) || 0),
-    type: account.billing_preference,
-  }));
-  const invoicedBalance = accountRows.filter((account) => account.type === "invoiced").reduce((total, account) => total + account.balance, 0);
-  const uninvoicedBalance = accountRows.filter((account) => account.type === "uninvoiced").reduce((total, account) => total + account.balance, 0);
-  const invoicedTarget = Number(settingsResult.data?.invoiced_cash_target || 0);
-  const uninvoicedTarget = Number(settingsResult.data?.uninvoiced_cash_target || 0);
-  const invoicedTopUp = Math.max(0, invoicedTarget - invoicedBalance);
-  const uninvoicedTopUp = Math.max(0, uninvoicedTarget - uninvoicedBalance);
+  const accounts = (accountsResult.data || []) as Row[];
+  const invoicedTarget = Number(accounts.find((account) => account.name === "Şirket Gider Kasası")?.opening_balance || 0);
+  const uninvoicedTarget = Number(accounts.find((account) => account.name === "Faturasız Gider Kasası")?.opening_balance || 0);
+  const invoicedTopUp = invoicedCost;
+  const uninvoicedTopUp = uninvoicedCost;
   const totalTopUp = invoicedTopUp + uninvoicedTopUp;
   const distributableResult = Math.max(0, periodResult - totalTopUp);
   const partnerRows = partnerProfiles.map((profile) => {
@@ -139,12 +136,9 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         </div>
         <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
           <ClosingMetric label="Kasaları tamamlamak için" value={totalTopUp} tone="purple" hint="İki kasanın toplam ihtiyacı" strong />
-          <ClosingMetric label="Faturalı kasaya ayrılacak" value={invoicedTopUp} tone="blue" hint={`Bakiye ${formatMoney(invoicedBalance)} · Hedef ${formatMoney(invoicedTarget)}`} />
-          <ClosingMetric label="Faturasız kasaya ayrılacak" value={uninvoicedTopUp} tone="orange" hint={`Bakiye ${formatMoney(uninvoicedBalance)} · Hedef ${formatMoney(uninvoicedTarget)}`} />
+          <ClosingMetric label="Faturalı kasaya ayrılacak" value={invoicedTopUp} tone="blue" hint={`Sabit kasa ${formatMoney(invoicedTarget)} · Bu ay harcanan ${formatMoney(invoicedCost)}`} />
+          <ClosingMetric label="Faturasız kasaya ayrılacak" value={uninvoicedTopUp} tone="orange" hint={`Sabit kasa ${formatMoney(uninvoicedTarget)} · Bu ay harcanan ${formatMoney(uninvoicedCost)}`} />
           <ClosingMetric label="Ortaklara bölünecek" value={distributableResult} tone={distributableResult >= 0 ? "green" : "red"} hint="Net sonuç − kasa tamamlama" strong />
-        </div>
-        <div className="border-t p-5">
-          <MonthCloseCashTargetForm year={year} month={month} invoicedTarget={invoicedTarget} uninvoicedTarget={uninvoicedTarget} />
         </div>
         <div className="grid gap-3 border-t bg-slate-50/60 p-5 md:grid-cols-3">
           {partnerRows.map((partner) => (
@@ -179,10 +173,12 @@ function ClosingMetric({ label, value, tone, hint, strong, format = "money" }: {
 function ReviewTable({ title, subtitle, rows, empty }: { title: string; subtitle: string; rows: { title: string; detail: string; amount: number }[]; empty: string }) { return <Card className="overflow-hidden"><div className="flex items-end justify-between border-b bg-slate-50 px-5 py-4"><div><h2 className="font-bold">{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><b>{formatMoney(rows.reduce((n, r) => n + r.amount, 0))}</b></div><div className="max-h-80 divide-y overflow-y-auto">{rows.map((r, i) => <div key={`${r.title}-${i}`} className="flex items-center justify-between gap-4 px-5 py-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{r.title}</div><div className="mt-0.5 truncate text-xs text-slate-400">{r.detail}</div></div><b className="shrink-0 text-sm">{formatMoney(r.amount)}</b></div>)}{!rows.length && <p className="p-6 text-center text-sm text-slate-400">{empty}</p>}</div></Card>; }
 function sum(rows: Row[], field: string) { return rows.reduce((n, r) => n + Number(r[field] || 0), 0); }
 function nestedSum(value: unknown) { return Array.isArray(value) ? value.reduce((n, r) => n + Number((r as Row).amount || 0), 0) : 0; }
+function vendorCashPaid(value: unknown) { return Array.isArray(value) ? value.reduce((total, payment) => total + ((payment as Row).payment_channel === "client_direct" ? 0 : Number((payment as Row).amount || 0)), 0) : 0; }
 function relationName(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.company_name || v?.name || "—"); }
 function relationId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
 function periodIndex(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return Number(v?.year || 0) * 12 + Number(v?.month || 0); }
 function outstanding(row: Row) { return Math.max(0, Number(row.total_amount || 0) - nestedSum(row.payments)); }
+function inDateRange(value: unknown, start: string, end: string) { const dateValue = String(value || ""); return dateValue >= start && dateValue <= end; }
 function profileId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
 function person(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return `${v?.first_name || ""} ${v?.last_name || ""}`.trim() || "Ortak"; }
 function date(value: unknown) { return value ? new Date(String(value)).toLocaleDateString("tr-TR") : "—"; }
