@@ -23,7 +23,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("service_periods").select("id,net_amount,vat_amount,gross_amount,billing_preference,invoice_status,collection_status,due_date,clients(company_name),projects(name),services(name)").eq("year", year).eq("month", month),
     s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("vendor_accruals").select("id,amount,status,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
+    s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("receivables")
       .select("id,total_amount,status,due_date,payments(amount),clients(company_name),projects(name),service_periods!inner(year,month)")
@@ -55,6 +55,12 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
   const payrollRowsByProfile = new Map(payroll.map((row) => [profileId(row.profiles), row]));
   const payrollCost = salaryProfiles.reduce((total, profile) => total + (payrollByProfile.get(String(profile.id)) ?? Number(profile.base_salary || 0)), 0);
+  const invoicedCost =
+    sum(expenses.filter((row) => row.billing_preference === "invoiced"), "amount") +
+    sum(vendors.filter((row) => row.billing_preference === "invoiced"), "amount");
+  const uninvoicedCost =
+    sum(expenses.filter((row) => row.billing_preference === "uninvoiced"), "amount") +
+    sum(vendors.filter((row) => row.billing_preference === "uninvoiced"), "amount");
   const salaryRows = salaryProfiles.map((profile) => {
     const payrollRow = payrollRowsByProfile.get(String(profile.id));
     const employmentType = String(profile.employment_type) === "partner" ? "Ortak" : "Çalışan";
@@ -104,6 +110,14 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         <MonthLink href={`/month-close/${next.year}/${next.month}`}>Sonraki ay →</MonthLink>
         {close?.status === "closed" && <span className="ml-auto rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Kapanış tamamlandı</span>}
       </div>
+
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint="Bu ay gerçekten kasaya giren" />
+        <ClosingMetric label="Faturasız giderler" value={uninvoicedCost} tone="orange" hint="Manuel gider + tedarikçi" />
+        <ClosingMetric label="Faturalı giderler" value={invoicedCost} tone="blue" hint="KDV dâhil gider + tedarikçi" />
+        <ClosingMetric label="Maaş gideri" value={payrollCost} tone="purple" hint={`${salaryProfiles.length} aktif maaş`} />
+        <ClosingMetric label="Ay sonu net" value={cashIncome - uninvoicedCost - invoicedCost - payrollCost} tone={cashIncome - uninvoicedCost - invoicedCost - payrollCost >= 0 ? "green" : "red"} hint="Gelen − tüm giderler − maaş" strong />
+      </section>
 
       <section className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="border-b bg-slate-50 px-5 py-4"><h2 className="font-bold">Aylık finansal sonuç</h2><p className="mt-1 text-xs text-slate-500">Kapanış sonucu, bu ay gerçekten tahsil edilen gelirden aya ait giderler ve tüm aktif maaşlar düşülerek hesaplanır.</p></div>
@@ -179,6 +193,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
 function MonthLink({ href, children }: { href: string; children: React.ReactNode }) { return <Link href={href} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:border-[#CD0B16] hover:text-[#CD0B16]">{children}</Link>; }
 function ResultRow({ label, value, tone, hint, strong }: { label: string; value: number; tone: "green" | "blue" | "red"; hint?: string; strong?: boolean }) { const color = tone === "green" ? "text-emerald-700" : tone === "red" ? "text-red-700" : "text-blue-700"; return <div className={`flex items-center justify-between gap-4 px-5 py-4 ${strong ? "bg-slate-50" : ""}`}><div><div className={strong ? "font-bold" : "font-medium"}>{label}</div>{hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}</div><b className={`text-lg ${color}`}>{formatMoney(value)}</b></div>; }
 function Metric({ label, value, warning }: { label: string; value: string; warning?: boolean }) { return <Card className={`p-5 ${warning ? "border-red-200 bg-red-50/60" : ""}`}><div className="text-xs font-medium text-slate-500">{label}</div><div className={`mt-2 text-xl font-bold ${warning ? "text-red-700" : ""}`}>{value}</div></Card>; }
+function ClosingMetric({ label, value, tone, hint, strong }: { label: string; value: number; tone: "green" | "orange" | "blue" | "purple" | "red"; hint: string; strong?: boolean }) { const styles = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", orange: "border-orange-200 bg-orange-50 text-orange-800", blue: "border-blue-200 bg-blue-50 text-blue-800", purple: "border-violet-200 bg-violet-50 text-violet-800", red: "border-red-200 bg-red-50 text-red-800" }; return <Card className={`p-4 ${styles[tone]} ${strong ? "ring-1 ring-current/10" : ""}`}><div className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</div><div className="mt-2 text-xl font-bold">{formatMoney(value)}</div><div className="mt-1 text-[11px] opacity-70">{hint}</div></Card>; }
 function ReviewTable({ title, subtitle, rows, empty }: { title: string; subtitle: string; rows: { title: string; detail: string; amount: number }[]; empty: string }) { return <Card className="overflow-hidden"><div className="flex items-end justify-between border-b bg-slate-50 px-5 py-4"><div><h2 className="font-bold">{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><b>{formatMoney(rows.reduce((n, r) => n + r.amount, 0))}</b></div><div className="max-h-80 divide-y overflow-y-auto">{rows.map((r, i) => <div key={`${r.title}-${i}`} className="flex items-center justify-between gap-4 px-5 py-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{r.title}</div><div className="mt-0.5 truncate text-xs text-slate-400">{r.detail}</div></div><b className="shrink-0 text-sm">{formatMoney(r.amount)}</b></div>)}{!rows.length && <p className="p-6 text-center text-sm text-slate-400">{empty}</p>}</div></Card>; }
 function sum(rows: Row[], field: string) { return rows.reduce((n, r) => n + Number(r[field] || 0), 0); }
 function nestedSum(value: unknown) { return Array.isArray(value) ? value.reduce((n, r) => n + Number((r as Row).amount || 0), 0) : 0; }
