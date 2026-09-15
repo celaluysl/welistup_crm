@@ -217,6 +217,25 @@ export async function updateUnallocatedReceipt(_: State, formData: FormData): Pr
   return { success: "Fazla tahsilat ve kasa hareketi güncellendi." };
 }
 
+export async function cancelUnallocatedReceipt(_: State, formData: FormData): Promise<State> {
+  const parsed = z.object({
+    receipt_id: z.string().uuid(),
+    cancellation_reason: z.string().trim().min(3).max(1000),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "İptal nedenini yazın." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_unallocated_customer_receipt", {
+    p_receipt_id: parsed.data.receipt_id,
+    p_reason: parsed.data.cancellation_reason,
+  });
+  if (error) return { error: error.message.includes("receipt_already_classified") ? "Eşleştirilmiş tahsilat iptal edilemez." : error.message.includes("period_closed") ? "Kapalı aya ait tahsilatı iptal etmek için önce ayı yeniden açın." : error.message };
+  revalidatePath("/collections");
+  revalidatePath("/accounts");
+  revalidatePath("/transactions");
+  revalidatePath("/month-close", "layout");
+  return { success: "Fazla tahsilat iptal edildi ve kasa bakiyesi düzeltildi." };
+}
+
 export async function addCollectionActivity(
   _: State,
   formData: FormData,

@@ -82,7 +82,9 @@ export default async function Collections({
       notes: payment.notes,
       bulkTransactionId: payment.bulk_transaction_id,
     }));
-    const excessReceipts = (record.unallocated_customer_receipts || []).map(
+    const excessReceipts = (record.unallocated_customer_receipts || []).filter(
+      (receipt) => receipt.status !== "refunded",
+    ).map(
       (receipt) => ({
         id: receipt.id,
         amount: Number(receipt.amount),

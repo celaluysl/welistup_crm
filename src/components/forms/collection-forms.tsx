@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, cancelPayment, classifyUnallocatedReceipt, recordBulkPayment, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
+import { addCollectionActivity, cancelPayment, cancelUnallocatedReceipt, classifyUnallocatedReceipt, recordBulkPayment, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -186,8 +186,9 @@ export function ReceiptClassificationForm({ receiptId, services, onSuccess, onCa
 
 export function UnallocatedReceiptEditForm({ receipt, accounts, onSuccess, onCancel }: { receipt: { id: string; amount: number; receivedDate: string; accountId: string | null; notes: string | null }; accounts: { id: string; name: string; currency: string }[]; onSuccess: () => void; onCancel: () => void }) {
   const [state, action, pending] = useActionState(updateUnallocatedReceipt, null);
-  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
-  return <form action={action} className="grid gap-4 sm:grid-cols-2">
+  const [cancelState, cancelAction, cancelling] = useActionState(cancelUnallocatedReceipt, null);
+  useEffect(() => { if (state?.success || cancelState?.success) onSuccess(); }, [state?.success, cancelState?.success, onSuccess]);
+  return <><form action={action} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="receipt_id" value={receipt.id}/>
     <Field label="Fazla tahsilat tutarı"><input name="amount" type="number" min="0.01" step="0.01" required defaultValue={receipt.amount} className={inputClass}/></Field>
     <Field label="Ödemenin geldiği kasa"><select name="account_id" required defaultValue={receipt.accountId || ""} className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
@@ -195,7 +196,13 @@ export function UnallocatedReceiptEditForm({ receipt, accounts, onSuccess, onCan
     <Field label="Not"><input name="notes" defaultValue={receipt.notes || ""} className={inputClass}/></Field>
     <Result state={state}/>
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Fazla tahsilatı güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
-  </form>;
+  </form><form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
+    <input type="hidden" name="receipt_id" value={receipt.id}/>
+    <div><b className="text-sm text-red-700">Bu para aslında gelmediyse</b><p className="mt-1 text-xs text-slate-500">İptal işlemi fazla tahsilatı kaldırır ve bağlı kasa girişini geri alır.</p></div>
+    <Field label="İptal nedeni"><input name="cancellation_reason" required minLength={3} placeholder="Örn. Yanlışlıkla iki kez kaydedildi" className={inputClass}/></Field>
+    {cancelState?.error && <p className="text-sm text-red-600">{cancelState.error}</p>}
+    <div><Button type="submit" variant="danger" disabled={cancelling} onClick={(event) => { if (!window.confirm("Bu fazla tahsilatı iptal edip kasa girişini geri almak istiyor musunuz?")) event.preventDefault(); }}>{cancelling ? "İptal ediliyor…" : "Fazla tahsilatı iptal et"}</Button></div>
+  </form></>;
 }
 
 function Result({
