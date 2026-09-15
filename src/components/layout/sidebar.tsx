@@ -43,6 +43,7 @@ export async function Sidebar() {
     { data: accounts },
     { data: payroll },
     { data: monthClose },
+    { data: financialReportsFeature },
   ] = await Promise.all([
     s.rpc("has_permission", { requested: "settings.manage" }),
     s.rpc("has_permission", { requested: "team.read" }),
@@ -54,6 +55,7 @@ export async function Sidebar() {
     s.rpc("has_permission", { requested: "accounts.read" }),
     s.rpc("has_permission", { requested: "payroll.read" }),
     s.rpc("has_permission", { requested: "month_close.read" }),
+    s.from("app_features").select("enabled").eq("feature_key", "financial_reports_menu").maybeSingle(),
   ]);
   return (
     <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-slate-800 bg-slate-950 text-white lg:block">
@@ -112,10 +114,12 @@ export async function Sidebar() {
             <Group>Finans</Group>
             {finance && (
               <>
-                <Link href="/financial-reports" className={linkClass}>
-                  <BarChart3 size={18} />
-                  Finansal Raporlar
-                </Link>
+                {financialReportsFeature?.enabled && (
+                  <Link href="/financial-reports" className={linkClass}>
+                    <BarChart3 size={18} />
+                    Finansal Raporlar
+                  </Link>
+                )}
                 <Link href="/expenses?type=invoiced" className={linkClass}>
                   <ReceiptText size={18} />
                   Faturalı Giderler
