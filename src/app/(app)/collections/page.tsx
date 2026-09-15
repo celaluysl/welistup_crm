@@ -38,7 +38,7 @@ export default async function Collections({
     supabase
       .from("receivables")
       .select(
-        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(id,company_name),projects!inner(name,status),payments(id,amount,payment_date,account_id,notes,bulk_transaction_id,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(id,year,month,billing_preference,project_service_id,customer_extra_net_amount,vendor_extra_net_amount,ads_extra_notes,services(name))",
+        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,settled_without_cash,settlement_notes,clients(id,company_name),projects!inner(name,status),payments(id,amount,payment_date,account_id,notes,bulk_transaction_id,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(id,year,month,billing_preference,project_service_id,customer_extra_net_amount,vendor_extra_net_amount,ads_extra_notes,services(name))",
       )
       .eq("service_periods.year", year)
       .eq("projects.status", "active")
@@ -127,6 +127,8 @@ export default async function Collections({
       dueDate: record.due_date,
       coverageStart: record.coverage_start,
       coverageEnd: record.coverage_end,
+      settledWithoutCash: record.settled_without_cash,
+      settlementNotes: record.settlement_notes,
       status: record.status,
       payments,
       excessReceipts,

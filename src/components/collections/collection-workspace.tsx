@@ -32,6 +32,8 @@ export type CollectionRow = {
   dueDate: string | null;
   coverageStart: string | null;
   coverageEnd: string | null;
+  settledWithoutCash: boolean;
+  settlementNotes: string | null;
   status: string;
   payments: {
     id: string;
@@ -116,7 +118,9 @@ export function CollectionWorkspace({
           (value, row) => ({
             expected: value.expected + row.total,
             collected: value.collected + totalCollected(row),
-            remaining: value.remaining + Math.max(0, row.total - row.paid),
+            remaining:
+              value.remaining +
+              (row.settledWithoutCash ? 0 : Math.max(0, row.total - row.paid)),
             overdue:
               value.overdue + (isOverdue(row) ? row.total - row.paid : 0),
           }),
@@ -424,7 +428,9 @@ function MonthCell({
   row: CollectionRow;
   onClick: () => void;
 }) {
-  const remaining = Math.max(0, row.total - row.paid);
+  const remaining = row.settledWithoutCash
+    ? 0
+    : Math.max(0, row.total - row.paid);
   const collected = totalCollected(row);
   const excess = excessForRow(row);
   const tone =
@@ -441,7 +447,11 @@ function MonthCell({
       className={`h-12 w-full rounded-lg px-2 py-1 text-left transition ${tone}`}
     >
       <div className="font-bold text-slate-800">
-        {collected ? formatMoney(collected, row.currency) : "Ödeme bekliyor"}
+        {row.settledWithoutCash
+          ? "Önceden karşılandı"
+          : collected
+            ? formatMoney(collected, row.currency)
+            : "Ödeme bekliyor"}
       </div>
       {excess > 0 ? (
         <div className="mt-1 text-[10px] font-medium text-amber-700">
@@ -449,7 +459,9 @@ function MonthCell({
         </div>
       ) : (
         <div className="mt-1 text-[10px] text-slate-500">
-          Beklenen {formatMoney(row.total, row.currency)}
+          {row.settledWithoutCash
+            ? "Yeni kasa hareketi oluşturulmadı"
+            : `Beklenen ${formatMoney(row.total, row.currency)}`}
         </div>
       )}
       {remaining > 0 && row.paid > 0 && (
@@ -556,7 +568,9 @@ function PaymentModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const remaining = Math.max(0, row.total - row.paid);
+  const remaining = row.settledWithoutCash
+    ? 0
+    : Math.max(0, row.total - row.paid);
   const detailItems = row.items || [row];
   const excessTotal = row.excessReceipts.reduce(
     (sum, receipt) => sum + receipt.remainingAmount,
@@ -601,6 +615,17 @@ function PaymentModal({
           </button>
         </header>
         <div className="p-5">
+          {row.settledWithoutCash && (
+            <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              <b>Önceki ödeme kapsamında karşılandı.</b>
+              {row.settlementNotes && (
+                <p className="mt-1">{row.settlementNotes}</p>
+              )}
+              <p className="mt-1 text-xs text-blue-600">
+                Bu ay için yeni bir kasa hareketi oluşturulmadı.
+              </p>
+            </div>
+          )}
           <div
             className={`mb-5 grid gap-3 ${excessTotal > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}
           >
