@@ -51,7 +51,7 @@ language sql stable security invoker set search_path='' as $$
   left join public.accounts account on account.id=payment.account_id
   cross join bounds
   where payment.payment_date between bounds.starts_at and bounds.ends_at
-  order by movement_date,title;
+  order by 3,2;
 $$;
 
 grant execute on function public.monthly_collection_cash_movements(integer,integer) to authenticated;
