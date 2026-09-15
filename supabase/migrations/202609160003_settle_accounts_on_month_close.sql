@@ -40,30 +40,30 @@ begin
   returning id into distribution;
 
   if inv_cash is not null then
-    select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_cash),0) into inv_cash_balance from public.accounts where id=inv_cash;
+    select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_cash and transaction_date>=date'2026-08-01'),0) into inv_cash_balance from public.accounts where id=inv_cash;
     if inv_cash_balance<0 then raise exception'negative_collection_balance'; end if;
     if inv_cash_balance>0 then perform public.transfer_between_accounts(inv_cash,inv_collection,inv_cash_balance,close_date,'Ay kapanışı nakit tahsilat konsolidasyonu'); end if;
   end if;
   if uninv_cash is not null then
-    select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_cash),0) into uninv_cash_balance from public.accounts where id=uninv_cash;
+    select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_cash and transaction_date>=date'2026-08-01'),0) into uninv_cash_balance from public.accounts where id=uninv_cash;
     if uninv_cash_balance<0 then raise exception'negative_collection_balance'; end if;
     if uninv_cash_balance>0 then perform public.transfer_between_accounts(uninv_cash,uninv_collection,uninv_cash_balance,close_date,'Ay kapanışı nakit tahsilat konsolidasyonu'); end if;
   end if;
 
-  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_expense),0) into inv_expense_balance from public.accounts where id=inv_expense;
+  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_expense and transaction_date>=date'2026-08-01'),0) into inv_expense_balance from public.accounts where id=inv_expense;
   delta:=coalesce(inv_target,0)-inv_expense_balance;
   if delta>0 then perform public.transfer_between_accounts(inv_collection,inv_expense,delta,close_date,'Ay kapanışı · Faturalı gider kasasını hedefe tamamlama');
   elsif delta<0 then perform public.transfer_between_accounts(inv_expense,inv_collection,-delta,close_date,'Ay kapanışı · Faturalı gider kasası fazlasını iade'); end if;
   movement_log:=movement_log||jsonb_build_object('account','Şirket Gider Kasası','target',inv_target,'adjustment',delta);
 
-  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_expense),0) into uninv_expense_balance from public.accounts where id=uninv_expense;
+  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_expense and transaction_date>=date'2026-08-01'),0) into uninv_expense_balance from public.accounts where id=uninv_expense;
   delta:=coalesce(uninv_target,0)-uninv_expense_balance;
   if delta>0 then perform public.transfer_between_accounts(uninv_collection,uninv_expense,delta,close_date,'Ay kapanışı · Faturasız gider kasasını hedefe tamamlama');
   elsif delta<0 then perform public.transfer_between_accounts(uninv_expense,uninv_collection,-delta,close_date,'Ay kapanışı · Faturasız gider kasası fazlasını iade'); end if;
   movement_log:=movement_log||jsonb_build_object('account','Faturasız Gider Kasası','target',uninv_target,'adjustment',delta);
 
-  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_collection),0) into inv_collection_balance from public.accounts where id=inv_collection;
-  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_collection),0) into uninv_collection_balance from public.accounts where id=uninv_collection;
+  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_collection and transaction_date>=date'2026-08-01'),0) into inv_collection_balance from public.accounts where id=inv_collection;
+  select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_collection and transaction_date>=date'2026-08-01'),0) into uninv_collection_balance from public.accounts where id=uninv_collection;
   if inv_collection_balance<0 or uninv_collection_balance<0 then raise exception'insufficient_close_funds'; end if;
   if inv_collection_balance>0 then perform public.transfer_between_accounts(inv_collection,distribution,inv_collection_balance,close_date,'Ay kapanışı · Faturalı tahsilat bakiyesi devri'); end if;
   if uninv_collection_balance>0 then perform public.transfer_between_accounts(uninv_collection,distribution,uninv_collection_balance,close_date,'Ay kapanışı · Faturasız tahsilat bakiyesi devri'); end if;
