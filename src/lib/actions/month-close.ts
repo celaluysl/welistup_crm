@@ -76,7 +76,7 @@ export async function closeMonth(_: State, fd: FormData): Promise<State> {
           : error.message,
     };
   revalidatePath(`/month-close/${p.data.year}/${p.data.month}`);
-  return { success: "Ay kapatıldı; gider kasaları hedefe tamamlandı ve tahsilat kasaları yeni ay için sıfırlandı." };
+  return { success: "Ay kapatıldı; gider kasaları hedefe tamamlandı, tahsilat ve nakit kasaları yeni ay için sıfırlandı." };
 }
 export async function reopenMonth(
   closeId: string,

@@ -15,10 +15,10 @@ create or replace function public.settle_accounts_after_month_close()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare
   inv_collection uuid; uninv_collection uuid; inv_expense uuid; uninv_expense uuid;
-  inv_cash uuid; uninv_cash uuid; distribution uuid; actor uuid:=auth.uid();
+  inv_cash uuid; uninv_cash uuid; generic_cash uuid; generic_cash_billing text; distribution uuid; actor uuid:=auth.uid();
   inv_collection_balance numeric; uninv_collection_balance numeric;
   inv_expense_balance numeric; uninv_expense_balance numeric;
-  inv_cash_balance numeric; uninv_cash_balance numeric;
+  inv_cash_balance numeric; uninv_cash_balance numeric; generic_cash_balance numeric;
   inv_target numeric; uninv_target numeric; delta numeric; group_id uuid;
   close_date date; movement_log jsonb:='[]'::jsonb;
 begin
@@ -32,6 +32,7 @@ begin
   select id,opening_balance into uninv_expense,uninv_target from public.accounts where name='Faturasız Gider Kasası' and status='active' for update;
   select id into inv_cash from public.accounts where name='Faturalı Nakit Kasa' and status='active' for update;
   select id into uninv_cash from public.accounts where name='Faturasız Nakit Kasa' and status='active' for update;
+  select id,billing_preference::text into generic_cash,generic_cash_billing from public.accounts where name='Nakit Kasa' and status='active' for update;
   if inv_collection is null or uninv_collection is null or inv_expense is null or uninv_expense is null then raise exception'close_accounts_missing'; end if;
 
   insert into public.accounts(name,account_type,currency,billing_preference,opening_balance,status,notes,created_by)
@@ -48,6 +49,19 @@ begin
     select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=uninv_cash and transaction_date>=date'2026-08-01'),0) into uninv_cash_balance from public.accounts where id=uninv_cash;
     if uninv_cash_balance<0 then raise exception'negative_collection_balance'; end if;
     if uninv_cash_balance>0 then perform public.transfer_between_accounts(uninv_cash,uninv_collection,uninv_cash_balance,close_date,'Ay kapanışı nakit tahsilat konsolidasyonu'); end if;
+  end if;
+  if generic_cash is not null then
+    select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=generic_cash and transaction_date>=date'2026-08-01'),0) into generic_cash_balance from public.accounts where id=generic_cash;
+    if generic_cash_balance<0 then raise exception'negative_collection_balance'; end if;
+    if generic_cash_balance>0 then
+      perform public.transfer_between_accounts(
+        generic_cash,
+        case when generic_cash_billing='uninvoiced' then uninv_collection else inv_collection end,
+        generic_cash_balance,
+        close_date,
+        'Ay kapanışı · Nakit Kasa bakiyesi devri'
+      );
+    end if;
   end if;
 
   select opening_balance+coalesce((select sum(amount)from public.finance_transactions where account_id=inv_expense and transaction_date>=date'2026-08-01'),0) into inv_expense_balance from public.accounts where id=inv_expense;
