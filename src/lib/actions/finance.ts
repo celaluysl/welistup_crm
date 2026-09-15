@@ -165,7 +165,7 @@ export async function updatePayment(
     p_payment_date: parsed.data.payment_date,
     p_notes: parsed.data.notes || null,
   });
-  if (error) return { error: error.message.includes("invalid_payment_amount") ? "Tutar toplam alacağı aşamaz." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi ödeme ile aynı olmalı." : error.message };
+  if (error) return { error: error.message.includes("invalid_payment_amount") ? "Tutar toplam alacağı aşamaz." : error.message.includes("currency_mismatch") ? "Seçilen kasanın para birimi ödeme ile aynı olmalı." : error.message.includes("period_closed") ? "Kapalı aya ait tahsilatı düzenlemek için önce ayı yeniden açın." : error.message };
   revalidatePath("/collections");
   revalidatePath("/month-close", "layout");
   return { success: "Ödeme güncellendi." };

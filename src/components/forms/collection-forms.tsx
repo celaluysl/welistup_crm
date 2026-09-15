@@ -154,15 +154,16 @@ export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCan
   const [state, action, pending] = useActionState(updatePayment, null);
   const [cancelState, cancelAction, cancelling] = useActionState(cancelPayment, null);
   useEffect(() => { if (state?.success || cancelState?.success) onSuccess(); }, [state?.success, cancelState?.success, onSuccess]);
-  return <>{!payment.bulkTransactionId && <form action={action} className="grid gap-4 sm:grid-cols-2">
+  return <><form action={action} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="payment_id" value={payment.id} />
+    {payment.bulkTransactionId && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 sm:col-span-2"><b>Bu kayıt toplu tahsilatın bir hizmete ayrılan payıdır.</b><p className="mt-1">Tutar değişikliği tek kasa hareketinin toplamına fark olarak yansır. Kasa, tarih ve not değişikliği aynı tahsilatın diğer hizmet paylarına da uygulanır.</p></div>}
     <Field label="Tahsil edilen tutar"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required defaultValue={payment.amount} className={inputClass} /></Field>
     <Field label="Ödemenin geldiği kasa"><select name="account_id" required defaultValue={payment.accountId || ""} className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
     <Field label="Gerçek ödeme tarihi"><input name="payment_date" type="date" required defaultValue={payment.paymentDate} className={inputClass} /></Field>
     <Field label="Not"><input name="notes" defaultValue={payment.notes || ""} className={inputClass} /></Field>
     <Result state={state} />
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Ödemeyi güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
-  </form>}<form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
+  </form><form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
     <input type="hidden" name="payment_id" value={payment.id} />
     <div><b className="text-sm text-red-700">Ödeme aslında gelmediyse</b><p className="mt-1 text-xs text-slate-500">Tahsilatı iptal etmek alacağı yeniden açar ve kasa bakiyesini geri düzeltir.{payment.bulkTransactionId ? " Bu kayıt toplu ödemenin ilgili hizmete ayrılan parçasıdır." : ""}</p></div>
     <Field label="İptal nedeni"><input name="cancellation_reason" required minLength={3} placeholder="Örn. Ödeme yanlışlıkla işlendi" className={inputClass} /></Field>
