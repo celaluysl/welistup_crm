@@ -18,32 +18,30 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, transactionsResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, cashReceivablesResult, hostingPaymentsResult, manualIncomesResult] = await Promise.all([
+  const [closeResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, cashReceivablesResult, hostingPaymentsResult, manualIncomesResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
-    s.from("finance_transactions").select("id,transaction_type,amount,category,description,transaction_date,accounts(name)").gte("transaction_date", start).lte("transaction_date", end).order("transaction_date"),
-    s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount,payment_channel)").eq("year", year).eq("month", month).neq("status", "cancelled"),
+    s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount,payment_date,accounts(name))").eq("year", year).eq("month", month).neq("status", "cancelled"),
+    s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount,payment_date,payment_channel,accounts(name))").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("payroll_periods").select("id,net_payable,status,employment_type,profiles(id,first_name,last_name),payroll_payments(amount)").eq("year", year).eq("month", month).neq("status", "cancelled"),
-    s.from("receivables").select("id,total_amount,status,due_date,payments(amount),clients(id,company_name),projects(name),service_periods!inner(year,month)").neq("status", "paid"),
+    s.from("receivables").select("id,total_amount,status,due_date,settled_without_cash,payments(amount),clients(id,company_name),projects!inner(name,status),service_periods!inner(year,month)").neq("status", "paid").eq("projects.status", "active"),
     s.from("partner_ownerships").select("profile_id,ownership_percent,profiles(first_name,last_name)").lte("effective_from", end).or(`effective_to.is.null,effective_to.gte.${start}`),
     s.from("profiles").select("id,first_name,last_name,base_salary,salary_currency,employment_type").eq("status", "active").in("employment_type", ["partner", "employee"]).order("first_name"),
     s.from("accounts").select("id,name,billing_preference,status,opening_balance").eq("status", "active"),
-    s.from("receivables").select("payments(amount,payment_date,counts_as_cash),unallocated_customer_receipts(amount,received_date,status),projects!inner(status),service_periods!inner(year,month)").eq("service_periods.year", year).gte("service_periods.month", year === 2026 ? 8 : 1).eq("projects.status", "active"),
-    s.from("hosting_payments").select("amount,payment_date").gte("payment_date", start).lte("payment_date", end),
-    s.from("manual_incomes").select("amount,payment_date").gte("payment_date", start).lte("payment_date", end),
+    s.from("receivables").select("payments(amount,payment_date,counts_as_cash,notes,accounts(name)),unallocated_customer_receipts(amount,received_date,status,notes,accounts(name)),clients(company_name),projects!inner(name,status),service_periods!inner(year,month)").eq("service_periods.year", year).gte("service_periods.month", year === 2026 ? 8 : 1).eq("projects.status", "active"),
+    s.from("hosting_payments").select("amount,payment_date,notes,accounts(name),hosting_receivables(hosting_subscriptions(domain,account_label),clients(company_name))").gte("payment_date", start).lte("payment_date", end),
+    s.from("manual_incomes").select("amount,payment_date,notes,accounts(name)").gte("payment_date", start).lte("payment_date", end),
   ]);
 
   const close = closeResult.data;
-  const transactions = (transactionsResult.data || []) as Row[];
   const expenses = (expensesResult.data || []) as Row[];
   const vendors = (vendorsResult.data || []) as Row[];
   const payroll = (payrollResult.data || []) as Row[];
   const allOpenReceivables = (overdueResult.data || []) as Row[];
-  const overdue = allOpenReceivables.filter((row) => periodIndex(row.service_periods) === year * 12 + month);
+  const overdue = allOpenReceivables.filter((row) => !row.settled_without_cash && periodIndex(row.service_periods) === year * 12 + month);
   const crmStartPeriod = 2026 * 12 + 8;
   const previousOpen = allOpenReceivables.filter((row) => {
     const index = periodIndex(row.service_periods);
-    return index >= crmStartPeriod && index < year * 12 + month;
+    return !row.settled_without_cash && index >= crmStartPeriod && index < year * 12 + month;
   });
   const ownerships = (ownershipResult.data || []) as Row[];
   const salaryProfiles = (salaryProfilesResult.data || []) as Row[];
@@ -61,8 +59,24 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const hostingCash = sum((hostingPaymentsResult.data || []) as Row[], "amount");
   const manualCash = sum((manualIncomesResult.data || []) as Row[], "amount");
   const cashIncome = projectPaymentCash + excessReceiptCash + hostingCash + manualCash;
-  const manualCost = sum(expenses, "amount");
-  const vendorCost = sum(vendors, "amount");
+  const incomeRows = [
+    ...collectionRows.flatMap((receivable) => {
+      const client = relationName(receivable.clients);
+      const project = relationName(receivable.projects);
+      const payments = Array.isArray(receivable.payments) ? receivable.payments as Row[] : [];
+      const receipts = Array.isArray(receivable.unallocated_customer_receipts) ? receivable.unallocated_customer_receipts as Row[] : [];
+      return [
+        ...payments.filter((payment) => payment.counts_as_cash !== false && inDateRange(payment.payment_date, start, end)).map((payment) => ({ title: `${client} · ${project}`, detail: `${date(payment.payment_date)} · ${relationName(payment.accounts)}${payment.notes ? ` · ${payment.notes}` : ""}`, amount: Number(payment.amount || 0) })),
+        ...receipts.filter((receipt) => receipt.status !== "refunded" && inDateRange(receipt.received_date, start, end)).map((receipt) => ({ title: `${client} · Ek tahsilat`, detail: `${date(receipt.received_date)} · ${relationName(receipt.accounts)}${receipt.notes ? ` · ${receipt.notes}` : ""}`, amount: Number(receipt.amount || 0) })),
+      ];
+    }),
+    ...((manualIncomesResult.data || []) as Row[]).map((income) => ({ title: String(income.notes || "Bağımsız gelir"), detail: `${date(income.payment_date)} · ${relationName(income.accounts)}`, amount: Number(income.amount || 0) })),
+    ...((hostingPaymentsResult.data || []) as Row[]).map((payment) => ({ title: hostingPaymentName(payment.hosting_receivables), detail: `${date(payment.payment_date)} · ${relationName(payment.accounts)}${payment.notes ? ` · ${payment.notes}` : ""}`, amount: Number(payment.amount || 0) })),
+  ];
+  const expensePaymentRows = [
+    ...expenses.flatMap((expense) => (Array.isArray(expense.manual_expense_payments) ? expense.manual_expense_payments as Row[] : []).map((payment) => ({ title: String(expense.name || "Gider"), detail: `${expense.billing_preference === "invoiced" ? "Faturalı" : "Faturasız"} · ${date(payment.payment_date)} · ${relationName(payment.accounts)}`, amount: Number(payment.amount || 0) }))),
+    ...vendors.flatMap((vendor) => (Array.isArray(vendor.vendor_payments) ? vendor.vendor_payments as Row[] : []).filter((payment) => payment.payment_channel !== "client_direct").map((payment) => ({ title: relationName(vendor.vendors), detail: `${vendor.billing_preference === "invoiced" ? "Faturalı" : "Faturasız"} · ${relationName(vendor.projects)} · ${date(payment.payment_date)} · ${relationName(payment.accounts)}`, amount: Number(payment.amount || 0) }))),
+  ];
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
   const payrollRowsByProfile = new Map(payroll.map((row) => [profileId(row.profiles), row]));
   const payrollCost = salaryProfiles.reduce((total, profile) => total + (payrollByProfile.get(String(profile.id)) ?? Number(profile.base_salary || 0)), 0);
@@ -156,8 +170,8 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       </Card>
 
       <div className="mb-6 grid gap-5 xl:grid-cols-2">
-        <ReviewTable title="Gelir ve tahsilatlar" subtitle={`${transactions.filter((r) => r.transaction_type === "income").length} kasa hareketi`} rows={transactions.filter((r) => r.transaction_type === "income").map((r) => ({ title: String(r.description || r.category || "Tahsilat"), detail: `${date(r.transaction_date)} · ${relationName(r.accounts)}`, amount: Number(r.amount || 0) }))} empty="Bu ay tahsilat kaydı yok." />
-        <ReviewTable title="Gider tahakkukları" subtitle={`Manuel ${formatMoney(manualCost)} · Tedarikçi ${formatMoney(vendorCost)}`} rows={[...expenses.map((r) => ({ title: String(r.name), detail: `${r.category} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) })), ...vendors.map((r) => ({ title: relationName(r.vendors), detail: `${relationName(r.projects)} · ${statusLabel(String(r.status))}`, amount: Number(r.amount || 0) }))]} empty="Bu ay gider tahakkuku yok." />
+        <ReviewTable title="Gelir ve tahsilatlar" subtitle={`${incomeRows.length} gerçek tahsilat hareketi`} rows={incomeRows} empty="Bu ay tahsilat kaydı yok." />
+        <ReviewTable title="Gider ödemeleri" subtitle={`Faturalı ${formatMoney(invoicedCost)} · Faturasız ${formatMoney(uninvoicedCost)}`} rows={expensePaymentRows} empty="Bu ay gider ödemesi yok." />
         <ReviewTable title="Maaşlar" subtitle={`${payroll.length} dönem kaydı · ${salaryProfiles.length} aktif maaş`} rows={salaryRows} empty="Aktif maaş profili bulunamadı." />
         <ReviewTable title="Ödenmemiş ve açık alacaklar" subtitle={`${overdue.length} kayıt · Açık toplam ${formatMoney(openAmount)}`} rows={overdue.map((r) => ({ title: relationName(r.clients), detail: `${relationName(r.projects)} · Vade ${date(r.due_date)} · ${statusLabel(String(r.status))}`, amount: Math.max(0, Number(r.total_amount || 0) - nestedSum(r.payments)) }))} empty="Ödenmemiş açık alacak yok." />
       </div>
@@ -183,6 +197,7 @@ function relationId(value: unknown) { const v = (Array.isArray(value) ? value[0]
 function periodIndex(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return Number(v?.year || 0) * 12 + Number(v?.month || 0); }
 function outstanding(row: Row) { return Math.max(0, Number(row.total_amount || 0) - nestedSum(row.payments)); }
 function inDateRange(value: unknown, start: string, end: string) { const dateValue = String(value || ""); return dateValue >= start && dateValue <= end; }
+function hostingPaymentName(value: unknown) { const receivable = (Array.isArray(value) ? value[0] : value) as Row | null; const subscription = (Array.isArray(receivable?.hosting_subscriptions) ? receivable.hosting_subscriptions[0] : receivable?.hosting_subscriptions) as Row | null; const client = relationName(receivable?.clients); return client !== "—" ? `${client} · Hosting` : `${String(subscription?.domain || subscription?.account_label || "Hosting")} · Hosting`; }
 function profileId(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return String(v?.id || ""); }
 function person(value: unknown) { const v = (Array.isArray(value) ? value[0] : value) as Row | null; return `${v?.first_name || ""} ${v?.last_name || ""}`.trim() || "Ortak"; }
 function date(value: unknown) { return value ? new Date(String(value)).toLocaleDateString("tr-TR") : "—"; }
