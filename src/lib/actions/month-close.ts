@@ -56,6 +56,16 @@ export async function closeMonth(_: State, fd: FormData): Promise<State> {
     .safeParse(Object.fromEntries(fd));
   if (!p.success) return { error: "Kapanış bilgilerini kontrol edin." };
   const s = await createClient();
+  const { error: ownershipError } = await s.rpc(
+    "ensure_month_partner_ownerships",
+    { p_year: p.data.year, p_month: p.data.month },
+  );
+  if (ownershipError)
+    return {
+      error: ownershipError.message.includes("no_active_partners")
+        ? "Ay kapanışı için aktif ortak bulunamadı."
+        : ownershipError.message,
+    };
   const { error } = await s.rpc("close_month", {
     p_close_id: p.data.close_id,
     p_reserve: p.data.reserve,
