@@ -82,6 +82,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     title: String(movement.title || "Gelir"),
     detail: `${date(movement.movement_date)} · ${String(movement.account_name || "—")}${movement.notes && movement.notes !== movement.title ? ` · ${movement.notes}` : ""}`,
     amount: Number(movement.amount || 0),
+    billing: String(movement.billing_preference || ""),
   }));
   const incomeRows = cashMovementsResult.error ? fallbackIncomeRows : centralizedIncomeRows;
   const expensePaymentRows = [
@@ -116,6 +117,13 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const ownershipByProfile = new Map(ownerships.map((o) => [String(o.profile_id), o]));
   const fallbackPercent = partnerProfiles.length ? 100 / partnerProfiles.length : 0;
   const accounts = (accountsResult.data || []) as Row[];
+  const accountBilling = new Map(accounts.map((account) => [String(account.name), String(account.billing_preference || "")]));
+  const cashByBilling = incomeRows.reduce((totals, row) => {
+    const billing = "billing" in row && row.billing ? row.billing : accountBilling.get(row.detail.split(" · ")[1] || "");
+    if (billing === "invoiced") totals.invoiced += row.amount;
+    if (billing === "uninvoiced") totals.uninvoiced += row.amount;
+    return totals;
+  }, { invoiced: 0, uninvoiced: 0 });
   const invoicedTarget = Number(accounts.find((account) => account.name === "Şirket Gider Kasası")?.opening_balance || 0);
   const uninvoicedTarget = Number(accounts.find((account) => account.name === "Faturasız Gider Kasası")?.opening_balance || 0);
   const invoicedTopUp = invoicedCost;
@@ -144,8 +152,10 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
         {close?.status === "closed" && <span className="ml-auto rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Kapanış tamamlandı</span>}
       </div>
 
-      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint={`Tahsilat ${formatMoney(Number(cashSummary.project_payments ?? projectPaymentCash))} + ek ${formatMoney(Number(cashSummary.excess_receipts ?? excessReceiptCash))} + bağımsız ${formatMoney(Number(cashSummary.manual_income ?? manualCash))} + hosting ${formatMoney(Number(cashSummary.hosting_income ?? hostingCash))}`} />
+        <ClosingMetric label="Faturasız tahsilat" value={cashByBilling.uninvoiced} tone="orange" hint="Bu ay faturasız tahsilat kasasına giren" />
+        <ClosingMetric label="Faturalı tahsilat" value={cashByBilling.invoiced} tone="blue" hint="Bu ay faturalı tahsilat kasasına giren" />
         <ClosingMetric label="Faturasız giderler" value={uninvoicedCost} tone="orange" hint="Manuel gider + tedarikçi" />
         <ClosingMetric label="Faturalı giderler" value={invoicedCost} tone="blue" hint="KDV dâhil gider + tedarikçi" />
         <ClosingMetric label="Maaş gideri" value={payrollCost} tone="purple" hint={`${salaryProfiles.length} aktif maaş`} />
