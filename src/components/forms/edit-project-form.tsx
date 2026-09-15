@@ -11,6 +11,8 @@ type Project = {
   domain: string | null;
   description: string | null;
   start_date: string | null;
+  end_date: string | null;
+  status: "active" | "inactive" | "archived";
   billing_preference: "invoiced" | "uninvoiced";
   is_white_label: boolean;
   project_services: {
@@ -70,6 +72,7 @@ export function EditProjectForm({
   const [billingPreference, setBillingPreference] = useState(
     project.billing_preference,
   );
+  const [projectStatus, setProjectStatus] = useState(project.status);
   const activeService =
     project.project_services.find((item) => item.status === "active") ||
     project.project_services[0];
@@ -143,6 +146,28 @@ export function EditProjectForm({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Proje durumu">
+        <select
+          name="status"
+          value={projectStatus}
+          onChange={(event) => setProjectStatus(event.target.value as Project["status"])}
+          className={inputClass}
+        >
+          <option value="active">Aktif</option>
+          <option value="inactive">Pasif / durduruldu</option>
+          <option value="archived">Arşiv</option>
+        </select>
+      </Field>
+      <Field label={projectStatus === "active" ? "Bitiş tarihi (opsiyonel)" : "Durdurma tarihi"}>
+        <input
+          name="end_date"
+          type="date"
+          min={project.start_date || undefined}
+          defaultValue={project.end_date || ""}
+          required={projectStatus !== "active"}
+          className={inputClass}
+        />
       </Field>
       <ProjectServiceRows
         services={services}

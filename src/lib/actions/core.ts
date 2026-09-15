@@ -12,6 +12,8 @@ const projectSchema = z.object({
   billing_preference: z.enum(["invoiced", "uninvoiced"]),
   is_white_label: z.string().optional(),
   description: z.string().optional(),
+  status: z.enum(["active", "inactive", "archived"]).optional(),
+  end_date: z.string().optional(),
 });
 export async function createProject(
   _: { error?: string } | null,
@@ -23,6 +25,8 @@ export async function createProject(
   if (!services.success) return { error: services.error };
   const vendor = parseProjectVendor(fd);
   if (!vendor.success) return { error: vendor.error };
+  if (p.data.status && p.data.status !== "active" && !p.data.end_date)
+    return { error: "Pasif veya arşiv proje için durdurma tarihi seçin." };
   const s = await createClient();
   const { data, error } = await s.rpc("create_project_with_services", {
     p_client_id: p.data.client_id,
@@ -169,8 +173,9 @@ export async function updateProject(
     .from("project_services")
     .select("id,currency")
     .eq("project_id", id)
-    .eq("status", "active")
-    .single();
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (vendor.data && projectService) {
     const {
       data: { user },
@@ -200,6 +205,27 @@ export async function updateProject(
       .eq("id", assignmentId);
     if (deactivateError)
       return { error: `Proje güncellendi ancak hakediş durdurulamadı: ${deactivateError.message}` };
+  }
+  if (p.data.status) {
+    const endDate = p.data.end_date || null;
+    const { error: projectStatusError } = await s
+      .from("projects")
+      .update({ status: p.data.status, end_date: endDate })
+      .eq("id", id);
+    if (projectStatusError) return { error: projectStatusError.message };
+    const serviceStatus = p.data.status === "active" ? "active" : "inactive";
+    const { error: serviceStatusError } = await s
+      .from("project_services")
+      .update({ status: serviceStatus, end_date: endDate })
+      .eq("project_id", id);
+    if (serviceStatusError) return { error: serviceStatusError.message };
+    if (projectService) {
+      const { error: assignmentStatusError } = await s
+        .from("vendor_assignments")
+        .update({ status: serviceStatus, end_date: endDate })
+        .eq("project_service_id", projectService.id);
+      if (assignmentStatusError) return { error: assignmentStatusError.message };
+    }
   }
   revalidatePath(`/projects/${id}`);
   revalidatePath("/projects");
