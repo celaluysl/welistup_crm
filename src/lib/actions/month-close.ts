@@ -67,10 +67,16 @@ export async function closeMonth(_: State, fd: FormData): Promise<State> {
         ? "Ayı kapatmadan önce tüm checklist maddelerini tamamlayın."
         : error.message.includes("ownership_total")
           ? "Ortaklık oranlarının toplamı %100 olmalı."
+          : error.message.includes("insufficient_close_funds")
+            ? "Tahsilat kasalarındaki bakiye, gider kasalarını hedefe tamamlamak için yetersiz."
+            : error.message.includes("negative_collection_balance")
+              ? "Tahsilat kasalarından birinde negatif bakiye var. Kapanıştan önce kasa hareketlerini kontrol edin."
+              : error.message.includes("close_accounts_missing")
+                ? "Kapanış için gerekli tahsilat veya gider kasalarından biri bulunamadı."
           : error.message,
     };
   revalidatePath(`/month-close/${p.data.year}/${p.data.month}`);
-  return { success: "Ay kapatıldı ve finansal snapshot oluşturuldu." };
+  return { success: "Ay kapatıldı; gider kasaları hedefe tamamlandı ve tahsilat kasaları yeni ay için sıfırlandı." };
 }
 export async function reopenMonth(
   closeId: string,
