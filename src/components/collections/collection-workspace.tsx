@@ -180,6 +180,16 @@ export function CollectionWorkspace({
           );
         }
       }
+      for (const receipt of row.excessReceipts) {
+        const receiptYear = Number(receipt.receivedDate.slice(0, 4));
+        const receiptMonth = Number(receipt.receivedDate.slice(5, 7));
+        if (receiptYear === year && receipt.status !== "refunded") {
+          current.cashByMonth.set(
+            receiptMonth,
+            (current.cashByMonth.get(receiptMonth) || 0) + receipt.amount,
+          );
+        }
+      }
       map.set(row.projectServiceId, current);
     });
     return [...map.values()];
