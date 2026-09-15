@@ -69,6 +69,29 @@ export async function updateVariableServicePeriod(
   return { success: "Bu aya ait iş ve tutar güncellendi." };
 }
 
+export async function updateAdsMonthlyAdjustment(_: State, formData: FormData): Promise<State> {
+  const parsed = z.object({
+    service_period_id: z.string().uuid(),
+    customer_extra_net: z.coerce.number().min(0),
+    vendor_extra_net: z.coerce.number().min(0),
+    notes: z.string().trim().max(2000).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Aylık ek ücret bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_ads_monthly_adjustment", {
+    p_service_period_id: parsed.data.service_period_id,
+    p_customer_extra_net: parsed.data.customer_extra_net,
+    p_vendor_extra_net: parsed.data.vendor_extra_net,
+    p_notes: parsed.data.notes || null,
+  });
+  if (error) return { error: error.message.includes("invoice_locked") ? "Kesilmiş faturanın tutarı değiştirilemez. Önce faturayı iptal edin." : error.message.includes("period_closed") ? "Kapalı ay değiştirilemez; önce ayı yeniden açın." : error.message.includes("payments_exceed_new_total") ? "Yeni müşteri toplamı alınmış ödemeden düşük olamaz." : error.message.includes("vendor_payments_exceed_new_total") ? "Yeni Tuğrul hakedişi ödenmiş tutardan düşük olamaz." : error.message.includes("vendor_accrual_not_found") ? "Bu projeye bağlı Tuğrul/tedarikçi hakediş kaydı bulunamadı." : error.message };
+  revalidatePath("/collections");
+  revalidatePath("/expenses");
+  revalidatePath("/vendor-payments");
+  revalidatePath("/month-close", "layout");
+  return { success: "Aylık Ads ek ücreti ve tedarikçi hakedişi güncellendi." };
+}
+
 export async function recordPayment(
   _: State,
   formData: FormData,

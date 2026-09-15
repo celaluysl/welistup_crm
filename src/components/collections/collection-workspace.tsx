@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Grid3X3, List, Pencil, Search, X } from "lucide-react";
 import {
   PaymentEditForm,
+  AdsMonthlyAdjustmentForm,
   BulkPaymentForm,
   PaymentForm,
   ReceiptClassificationForm,
@@ -16,10 +17,14 @@ export type CollectionRow = {
   id: string;
   clientId: string;
   projectServiceId: string;
+  servicePeriodId: string;
   month: number;
   client: string;
   project: string;
   service: string;
+  customerExtraNet: number;
+  vendorExtraNet: number;
+  adsExtraNotes: string | null;
   billing: "invoiced" | "uninvoiced";
   total: number;
   paid: number;
@@ -628,6 +633,27 @@ function PaymentModal({
               </p>
             </div>
           )}
+          {detailItems.some((item) => isAdsService(item.service)) && (
+            <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <h3 className="font-semibold text-blue-950">Aylık Ads ek ücreti</h3>
+              <p className="mb-4 mt-1 text-xs text-blue-700">Ana hizmet ücretinden bağımsızdır. Müşteriye yansıtılan ek tutarı ve Tuğrul/tedarikçi payını yalnızca bu ay için girin; harcama olmayan ayda 0 bırakın.</p>
+              <div className="space-y-4">
+                {detailItems.filter((item) => isAdsService(item.service)).map((item) => (
+                  <div key={item.servicePeriodId} className="rounded-lg bg-white p-3">
+                    {detailItems.length > 1 && <div className="mb-3 text-sm font-semibold">{item.project} · {item.service}</div>}
+                    <AdsMonthlyAdjustmentForm
+                      servicePeriodId={item.servicePeriodId}
+                      customerExtraNet={item.customerExtraNet}
+                      vendorExtraNet={item.vendorExtraNet}
+                      notes={item.adsExtraNotes}
+                      currency={item.currency}
+                      onSuccess={onSaved}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {remaining > 0 ? (
             <>
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -793,6 +819,11 @@ function MultiMonthPaymentForm({ row, allRows, year, accounts, onSaved }: { row:
     </div>
     {receivableIds.length ? <BulkPaymentForm key={`${startMonth}-${monthCount}-${maxAmount}`} receivableIds={receivableIds} maxAmount={maxAmount} accounts={accounts} onSuccess={onSaved} defaultFullPayment={false} coverageLabel={coverageLabel} /> : <div className="rounded-lg bg-white p-3 text-sm text-slate-500">Seçilen aylarda açık alacak bulunmuyor.</div>}
   </div>;
+}
+
+function isAdsService(service: string) {
+  const value = service.toLocaleLowerCase("tr-TR");
+  return value.includes("ads") || value.includes("reklam") || value.includes("sem");
 }
 function Mini({
   label,

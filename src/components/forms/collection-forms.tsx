@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, cancelPayment, cancelUnallocatedReceipt, classifyUnallocatedReceipt, recordBulkPayment, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
+import { addCollectionActivity, cancelPayment, cancelUnallocatedReceipt, classifyUnallocatedReceipt, recordBulkPayment, recordPayment, updateAdsMonthlyAdjustment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -204,6 +204,19 @@ export function UnallocatedReceiptEditForm({ receipt, accounts, onSuccess, onCan
     {cancelState?.error && <p className="text-sm text-red-600">{cancelState.error}</p>}
     <div><Button type="submit" variant="danger" disabled={cancelling} onClick={(event) => { if (!window.confirm("Bu fazla tahsilatı iptal edip kasa girişini geri almak istiyor musunuz?")) event.preventDefault(); }}>{cancelling ? "İptal ediliyor…" : "Fazla tahsilatı iptal et"}</Button></div>
   </form></>;
+}
+
+export function AdsMonthlyAdjustmentForm({ servicePeriodId, customerExtraNet, vendorExtraNet, notes, currency, onSuccess }: { servicePeriodId: string; customerExtraNet: number; vendorExtraNet: number; notes: string | null; currency: string; onSuccess: () => void }) {
+  const [state, action, pending] = useActionState(updateAdsMonthlyAdjustment, null);
+  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
+  return <form action={action} className="grid gap-3 sm:grid-cols-2">
+    <input type="hidden" name="service_period_id" value={servicePeriodId}/>
+    <Field label={`Müşteriden alınacak ek ücret (${currency})`}><input name="customer_extra_net" type="number" min="0" step="0.01" defaultValue={customerExtraNet} required className={inputClass}/></Field>
+    <Field label={`Tuğrul / tedarikçi ek hakedişi (${currency})`}><input name="vendor_extra_net" type="number" min="0" step="0.01" defaultValue={vendorExtraNet} required className={inputClass}/></Field>
+    <Field label="Bu aya özel açıklama" className="sm:col-span-2"><input name="notes" defaultValue={notes || ""} placeholder="Örn. Ağustos ek reklam bütçesi" className={inputClass}/></Field>
+    <Result state={state}/>
+    <div className="sm:col-span-2"><Button disabled={pending}>{pending ? "Kaydediliyor…" : "Aylık ek tutarları kaydet"}</Button></div>
+  </form>;
 }
 
 function Result({

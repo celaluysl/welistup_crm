@@ -35,7 +35,7 @@ export default async function Collections({
     supabase
       .from("receivables")
       .select(
-        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(id,company_name),projects!inner(name,status),payments(id,amount,payment_date,account_id,notes,bulk_transaction_id,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(year,month,billing_preference,project_service_id,services(name))",
+        "id,total_amount,currency,due_date,status,coverage_start,coverage_end,clients(id,company_name),projects!inner(name,status),payments(id,amount,payment_date,account_id,notes,bulk_transaction_id,accounts(name)),unallocated_customer_receipts(id,amount,remaining_amount,received_date,status,notes,custom_service_name,account_id,services(name),accounts(name)),service_periods!inner(id,year,month,billing_preference,project_service_id,customer_extra_net_amount,vendor_extra_net_amount,ads_extra_notes,services(name))",
       )
       .eq("service_periods.year", year)
       .eq("projects.status", "active")
@@ -72,6 +72,10 @@ export default async function Collections({
       month: number;
       billing_preference: "invoiced" | "uninvoiced";
       project_service_id: string;
+      id: string;
+      customer_extra_net_amount: number;
+      vendor_extra_net_amount: number;
+      ads_extra_notes: string | null;
       services: unknown;
     };
     const payments = (record.payments || []).map((payment) => ({
@@ -105,10 +109,14 @@ export default async function Collections({
       id: record.id,
       clientId: relation(record.clients)?.id || "",
       projectServiceId: period.project_service_id,
+      servicePeriodId: period.id,
       month: period.month,
       client: relation(record.clients)?.company_name || "—",
       project: relation(record.projects)?.name || "—",
       service: relation(period.services)?.name || "Hizmet",
+      customerExtraNet: Number(period.customer_extra_net_amount || 0),
+      vendorExtraNet: Number(period.vendor_extra_net_amount || 0),
+      adsExtraNotes: period.ads_extra_notes,
       billing: period.billing_preference,
       total: Number(record.total_amount),
       paid: payments.reduce((sum, payment) => sum + payment.amount, 0),
