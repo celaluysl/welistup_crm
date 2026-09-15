@@ -18,7 +18,6 @@ import {
   settleVendorAccrualDirect,
   updateVendorAccrualAmount,
 } from "@/lib/actions/vendors";
-import { transferAccounts } from "@/lib/actions/accounts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, inputClass } from "@/components/ui/field";
@@ -65,11 +64,12 @@ type Account = {
   currency: string;
   billing_preference: string;
 };
-type Replenishment = {
+type CashSummary = {
   label: string;
-  sourceAccount: Account | null;
-  targetAccount: Account | null;
-  months: { month: number; spent: number; replenished: number; remaining: number }[];
+  monthLabel: string;
+  fixedAmount: number;
+  spent: number;
+  remaining: number;
 };
 const months = [
   "Ocak",
@@ -90,14 +90,14 @@ export function ExpenseYearWorkspace({
   rows,
   definitions,
   accounts,
-  replenishment,
+  cashSummary,
   year,
   billing,
 }: {
   rows: ExpenseRow[];
   definitions: ExpenseDefinition[];
   accounts: Account[];
-  replenishment: Replenishment;
+  cashSummary: CashSummary;
   year: number;
   billing: "invoiced" | "uninvoiced";
 }) {
@@ -112,7 +112,6 @@ export function ExpenseYearWorkspace({
     "active" | "inactive" | "archived"
   >("active");
   const [creating, setCreating] = useState(false);
-  const [replenishmentMonth, setReplenishmentMonth] = useState<number | null>(null);
   const router = useRouter();
   const summary = useMemo(
     () =>
@@ -169,18 +168,22 @@ export function ExpenseYearWorkspace({
     setSelectedDefinition(null);
     setAddingMonth(null);
     setCreating(false);
-    setReplenishmentMonth(null);
     router.refresh();
   };
   return (
     <>
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Summary label="Yıllık toplam gider" value={summary.total} />
-        <Summary label="Ödenen" value={summary.paid} green />
+        <Summary label="Yıllık toplam gider" value={summary.total} tone="annual" />
         <Summary
-          label="Kalan"
-          value={Math.max(0, summary.total - summary.paid)}
-          red
+          label={`${cashSummary.monthLabel} ayı harcaması`}
+          value={cashSummary.spent}
+          tone="spent"
+        />
+        <Summary
+          label={`${cashSummary.label} · Kasada kalan`}
+          value={cashSummary.remaining}
+          tone={cashSummary.remaining < 0 ? "danger" : "remaining"}
+          note={`Sabit kasa ${formatMoney(cashSummary.fixedAmount, "TRY")}`}
         />
       </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -223,27 +226,6 @@ export function ExpenseYearWorkspace({
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b bg-blue-50/40">
-              <td className="sticky left-0 z-10 border-r bg-blue-50 px-4 py-3">
-                <b>{replenishment.label}</b>
-                <div className="mt-0.5 text-slate-500">Ay içi gerçek harcamayı tahsilat kasasından tamamla</div>
-                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600">Otomatik kasa hesabı</div>
-              </td>
-              {replenishment.months.map((item) => (
-                <td key={item.month} className="border-l p-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setReplenishmentMonth(item.month)}
-                    className={`h-14 w-full rounded-lg px-2 py-1.5 text-left transition ${item.remaining > 0 ? "bg-blue-100 hover:bg-blue-200" : "bg-slate-50 hover:bg-blue-50"}`}
-                  >
-                    <b>{formatMoney(item.remaining)}</b>
-                    <div className="mt-0.5 text-[10px] text-slate-500">
-                      {item.spent > 0 ? `Harcanan ${formatMoney(item.spent)}` : "Harcama yok"}
-                    </div>
-                  </button>
-                </td>
-              ))}
-            </tr>
             {groups.map((g) => (
               <tr key={g.key} className="border-b last:border-0">
                 <td className="sticky left-0 z-10 border-r bg-white px-4 py-3">
@@ -333,42 +315,8 @@ export function ExpenseYearWorkspace({
           onSaved={done}
         />
       )}
-      {replenishmentMonth !== null && (
-        <ReplenishmentDialog
-          year={year}
-          item={replenishment.months[replenishmentMonth - 1]}
-          config={replenishment}
-          onClose={() => setReplenishmentMonth(null)}
-          onSaved={done}
-        />
-      )}
     </>
   );
-}
-function ReplenishmentDialog({ year, item, config, onClose, onSaved }: { year: number; item: Replenishment["months"][number]; config: Replenishment; onClose: () => void; onSaved: () => void }) {
-  const [state, action, pending] = useActionState(transferAccounts, null);
-  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
-  const ready = Boolean(config.sourceAccount && config.targetAccount);
-  return <Modal title={`${months[item.month - 1]} · ${config.label} tamamlama`} onClose={onClose}>
-    <div className="grid gap-3 sm:grid-cols-3">
-      <Metric label="Ay içinde harcanan" value={item.spent} currency="TRY" />
-      <Metric label="Tamamlanan" value={item.replenished} currency="TRY" />
-      <Metric label="Kalan ihtiyaç" value={item.remaining} currency="TRY" />
-    </div>
-    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-      {config.sourceAccount?.name || "Tahsilat kasası bulunamadı"} → {config.targetAccount?.name || "Gider kasası bulunamadı"}
-    </div>
-    <form action={action} className="mt-5 grid gap-4 sm:grid-cols-2">
-      <input type="hidden" name="source" value={config.sourceAccount?.id || ""} />
-      <input type="hidden" name="target" value={config.targetAccount?.id || ""} />
-      <Field label="Aktarılacak tutar"><input name="amount" type="number" min="0.01" step="0.01" defaultValue={item.remaining || ""} required className={inputClass} /></Field>
-      <Field label="Transfer tarihi"><input name="date" type="date" defaultValue={`${year}-${String(item.month).padStart(2, "0")}-${String(new Date(year, item.month, 0).getDate()).padStart(2, "0")}`} required className={inputClass} /></Field>
-      <Field label="Not" className="sm:col-span-2"><input name="description" defaultValue={`${months[item.month - 1]} ${year} gider kasası tamamlama`} required className={inputClass} /></Field>
-      <Result state={state} />
-      {!ready && <p className="text-sm text-red-600 sm:col-span-2">Gerekli tahsilat veya gider kasası aktif değil. Yönetim → Kasalar ekranından kontrol edin.</p>}
-      <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button><Button disabled={pending || !ready}>{pending ? "Aktarılıyor…" : "Kasayı tamamla"}</Button></div>
-    </form>
-  </Modal>;
 }
 function Cell({ row, onClick }: { row: ExpenseRow; onClick: () => void }) {
   const remaining = Math.max(0, row.total - row.paid);
@@ -1007,22 +955,27 @@ function Modal({
 function Summary({
   label,
   value,
-  green,
-  red,
+  tone,
+  note,
 }: {
   label: string;
   value: number;
-  green?: boolean;
-  red?: boolean;
+  tone: "annual" | "spent" | "remaining" | "danger";
+  note?: string;
 }) {
+  const styles = {
+    annual: "border-blue-200 bg-blue-50 text-blue-800",
+    spent: "border-amber-200 bg-amber-50 text-amber-800",
+    remaining: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    danger: "border-red-200 bg-red-50 text-[#CD0B16]",
+  };
   return (
-    <Card className="p-5">
-      <div className="text-sm text-slate-500">{label}</div>
-      <div
-        className={`mt-2 text-xl font-bold ${green ? "text-emerald-700" : red ? "text-[#CD0B16]" : ""}`}
-      >
+    <Card className={`p-5 ${styles[tone]}`}>
+      <div className="text-sm opacity-75">{label}</div>
+      <div className="mt-2 text-xl font-bold">
         {formatMoney(value, "TRY")}
       </div>
+      {note && <div className="mt-1 text-xs opacity-70">{note}</div>}
     </Card>
   );
 }

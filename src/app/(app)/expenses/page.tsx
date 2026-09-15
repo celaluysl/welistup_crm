@@ -51,7 +51,7 @@ export default async function Expenses({
       .order("month"),
     s
       .from("accounts")
-      .select("id,name,currency,billing_preference")
+      .select("id,name,currency,billing_preference,opening_balance")
       .eq("status", "active")
       .order("name"),
     s
@@ -63,7 +63,6 @@ export default async function Expenses({
   const accountNames = billing === "invoiced"
     ? { source: "Şirket Tahsilat Kasası", target: "Şirket Gider Kasası", label: "Faturalı gider kasası" }
     : { source: "Faturasız Tahsilat Kasası", target: "Faturasız Gider Kasası", label: "Faturasız gider kasası" };
-  const sourceAccount = (accountResult.data || []).find((account) => account.name === accountNames.source);
   const targetAccount = (accountResult.data || []).find((account) => account.name === accountNames.target);
   const replenishments = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1;
@@ -73,10 +72,7 @@ export default async function Expenses({
     const spent = monthTransactions
       .filter((transaction) => transaction.transaction_type === "expense")
       .reduce((total, transaction) => total + Math.abs(Number(transaction.amount || 0)), 0);
-    const replenished = monthTransactions
-      .filter((transaction) => transaction.transaction_type === "transfer" && Number(transaction.amount || 0) > 0)
-      .reduce((total, transaction) => total + Number(transaction.amount || 0), 0);
-    return { month, spent, replenished, remaining: Math.max(0, spent - replenished) };
+    return { month, spent };
   });
   const vendorRows: ExpenseRow[] = (vendorResult.data || []).map((r) => {
     const project = rel(r.projects) as { name?: string; clients?: unknown } | null;
@@ -227,11 +223,12 @@ export default async function Expenses({
           rows={rows}
           definitions={definitions}
           accounts={accountResult.data || []}
-          replenishment={{
+          cashSummary={{
             label: accountNames.label,
-            sourceAccount: sourceAccount || null,
-            targetAccount: targetAccount || null,
-            months: replenishments,
+            monthLabel: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][now.getMonth()],
+            fixedAmount: Number(targetAccount?.opening_balance || 0),
+            spent: replenishments[now.getMonth()]?.spent || 0,
+            remaining: Number(targetAccount?.opening_balance || 0) - (replenishments[now.getMonth()]?.spent || 0),
           }}
           year={year}
           billing={billing}
