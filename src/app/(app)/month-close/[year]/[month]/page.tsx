@@ -49,14 +49,18 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const salaryProfiles = (salaryProfilesResult.data || []) as Row[];
   const partnerProfiles = salaryProfiles.filter((profile) => profile.employment_type === "partner");
 
-  const collectionCash = ((cashReceivablesResult.data || []) as Row[]).reduce((total, receivable) => {
+  const collectionRows = (cashReceivablesResult.data || []) as Row[];
+  const projectPaymentCash = collectionRows.reduce((total, receivable) => {
     const payments = Array.isArray(receivable.payments) ? receivable.payments as Row[] : [];
-    const receipts = Array.isArray(receivable.unallocated_customer_receipts) ? receivable.unallocated_customer_receipts as Row[] : [];
-    return total +
-      payments.filter((payment) => payment.counts_as_cash !== false && inDateRange(payment.payment_date, start, end)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) +
-      receipts.filter((receipt) => receipt.status !== "refunded" && inDateRange(receipt.received_date, start, end)).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0);
+    return total + payments.filter((payment) => payment.counts_as_cash !== false && inDateRange(payment.payment_date, start, end)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   }, 0);
-  const cashIncome = collectionCash + sum((hostingPaymentsResult.data || []) as Row[], "amount") + sum((manualIncomesResult.data || []) as Row[], "amount");
+  const excessReceiptCash = collectionRows.reduce((total, receivable) => {
+    const receipts = Array.isArray(receivable.unallocated_customer_receipts) ? receivable.unallocated_customer_receipts as Row[] : [];
+    return total + receipts.filter((receipt) => receipt.status !== "refunded" && inDateRange(receipt.received_date, start, end)).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0);
+  }, 0);
+  const hostingCash = sum((hostingPaymentsResult.data || []) as Row[], "amount");
+  const manualCash = sum((manualIncomesResult.data || []) as Row[], "amount");
+  const cashIncome = projectPaymentCash + excessReceiptCash + hostingCash + manualCash;
   const manualCost = sum(expenses, "amount");
   const vendorCost = sum(vendors, "amount");
   const payrollByProfile = new Map(payroll.map((row) => [profileId(row.profiles), Number(row.net_payable || 0)]));
@@ -116,7 +120,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       </div>
 
       <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint="Bu ay gerçekten kasaya giren" />
+        <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint={`Tahsilat ${formatMoney(projectPaymentCash)} + ek ${formatMoney(excessReceiptCash)} + bağımsız ${formatMoney(manualCash)} + hosting ${formatMoney(hostingCash)}`} />
         <ClosingMetric label="Faturasız giderler" value={uninvoicedCost} tone="orange" hint="Manuel gider + tedarikçi" />
         <ClosingMetric label="Faturalı giderler" value={invoicedCost} tone="blue" hint="KDV dâhil gider + tedarikçi" />
         <ClosingMetric label="Maaş gideri" value={payrollCost} tone="purple" hint={`${salaryProfiles.length} aktif maaş`} />
