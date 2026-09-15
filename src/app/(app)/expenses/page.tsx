@@ -12,12 +12,13 @@ type Payment = { amount: number; payment_channel?: string; payer_name?: string |
 export default async function Expenses({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; type?: string }>;
+  searchParams: Promise<{ year?: string; month?: string; type?: string }>;
 }) {
   const q = await searchParams,
     now = new Date(),
     parsed = Number(q.year) || now.getFullYear(),
-    year = Math.min(2200, Math.max(2000, parsed));
+    year = Math.min(2200, Math.max(2000, parsed)),
+    selectedMonth = Math.min(12, Math.max(1, Number(q.month) || now.getMonth() + 1));
   const billing = q.type === "uninvoiced" ? "uninvoiced" : "invoiced";
   const s = await createClient();
   await s.rpc("generate_recurring_manual_expenses", {
@@ -184,7 +185,7 @@ export default async function Expenses({
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           <Link
-            href={`/expenses?year=${year - 1}&type=${billing}`}
+            href={`/expenses?year=${year - 1}&month=${selectedMonth}&type=${billing}`}
             className="rounded-lg border bg-white px-3 py-2 text-sm"
           >
             ← {year - 1}
@@ -193,21 +194,38 @@ export default async function Expenses({
             {year}
           </span>
           <Link
-            href={`/expenses?year=${year + 1}&type=${billing}`}
+            href={`/expenses?year=${year + 1}&month=${selectedMonth}&type=${billing}`}
             className="rounded-lg border bg-white px-3 py-2 text-sm"
           >
             {year + 1} →
           </Link>
+          <form className="flex items-center gap-2">
+            <input type="hidden" name="year" value={year} />
+            <input type="hidden" name="type" value={billing} />
+            <select
+              name="month"
+              defaultValue={selectedMonth}
+              className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700"
+              aria-label="Özet ayı"
+            >
+              {["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"].map((monthName, index) => (
+                <option key={monthName} value={index + 1}>{monthName}</option>
+              ))}
+            </select>
+            <button className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Ayı göster
+            </button>
+          </form>
         </div>
         <div className="flex rounded-lg border bg-white p-1">
           <Link
-            href={`/expenses?year=${year}&type=invoiced`}
+            href={`/expenses?year=${year}&month=${selectedMonth}&type=invoiced`}
             className={`rounded-md px-4 py-2 text-sm font-semibold ${billing === "invoiced" ? "bg-[#CD0B16] text-white" : "text-slate-500"}`}
           >
             Faturalı giderler
           </Link>
           <Link
-            href={`/expenses?year=${year}&type=uninvoiced`}
+            href={`/expenses?year=${year}&month=${selectedMonth}&type=uninvoiced`}
             className={`rounded-md px-4 py-2 text-sm font-semibold ${billing === "uninvoiced" ? "bg-[#CD0B16] text-white" : "text-slate-500"}`}
           >
             Faturasız giderler
@@ -225,10 +243,10 @@ export default async function Expenses({
           accounts={accountResult.data || []}
           cashSummary={{
             label: accountNames.label,
-            monthLabel: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][now.getMonth()],
+            monthLabel: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][selectedMonth - 1],
             fixedAmount: Number(targetAccount?.opening_balance || 0),
-            spent: replenishments[now.getMonth()]?.spent || 0,
-            remaining: Number(targetAccount?.opening_balance || 0) - (replenishments[now.getMonth()]?.spent || 0),
+            spent: replenishments[selectedMonth - 1]?.spent || 0,
+            remaining: Number(targetAccount?.opening_balance || 0) - (replenishments[selectedMonth - 1]?.spent || 0),
           }}
           year={year}
           billing={billing}
