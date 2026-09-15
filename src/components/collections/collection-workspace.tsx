@@ -43,6 +43,8 @@ export type CollectionRow = {
     accountName: string | null;
     notes: string | null;
     bulkTransactionId?: string | null;
+    countsAsCash: boolean;
+    paymentChannelNote: string | null;
   }[];
   excessReceipts: {
     id: string;
@@ -168,6 +170,7 @@ export function CollectionWorkspace({
       };
       current.months.set(row.month, row);
       for (const payment of row.payments) {
+        if (!payment.countsAsCash) continue;
         const paymentYear = Number(payment.paymentDate.slice(0, 4));
         const paymentMonth = Number(payment.paymentDate.slice(5, 7));
         if (paymentYear === year) {
@@ -499,7 +502,11 @@ function excessForRow(row: CollectionRow) {
   );
 }
 function totalCollected(row: CollectionRow) {
-  return row.paid + excessForRow(row);
+  return (
+    row.payments
+      .filter((payment) => payment.countsAsCash)
+      .reduce((sum, payment) => sum + payment.amount, 0) + excessForRow(row)
+  );
 }
 function Status({ row }: { row: CollectionRow }) {
   const label =
@@ -737,13 +744,15 @@ function PaymentModal({
               {row.payments.map((payment) => (
                 <div
                   key={payment.id}
-                  className="flex items-center justify-between rounded-lg bg-slate-50 p-3 text-sm"
+                  className={`flex items-center justify-between rounded-lg p-3 text-sm ${payment.countsAsCash ? "bg-slate-50" : "border border-blue-200 bg-blue-50"}`}
                 >
                   <div>
                     <b>{payment.paymentDate}</b>
-                    <div className="text-xs text-slate-400">
-                      {payment.accountName || "Kasa belirtilmedi"} · Alacağa
-                      işlendi
+                    <div className={`text-xs ${payment.countsAsCash ? "text-slate-400" : "font-medium text-blue-700"}`}>
+                      {payment.countsAsCash
+                        ? `${payment.accountName || "Kasa belirtilmedi"} · Alacağa işlendi`
+                        : payment.paymentChannelNote ||
+                          "Şirket kasasına girmeden alacağa işlendi"}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
