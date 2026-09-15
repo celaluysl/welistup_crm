@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/expenses";
 import {
   payVendorAccrual,
+  payVendorAccrualsBulk,
   settleVendorAccrualDirect,
   updateVendorAccrualAmount,
 } from "@/lib/actions/vendors";
@@ -562,9 +563,12 @@ function DetailDialog({
                 <div><b>{item.payerName}</b><div className="text-xs text-slate-500">{item.category}</div></div>
                 <div className="text-right"><b>{formatMoney(item.total, item.currency)}</b><div className="text-xs text-slate-500">Kalan {formatMoney(itemRemaining, item.currency)}</div></div>
               </div>
-              {item.requiresReview ? <VendorReview row={item} onSaved={onSaved} /> : itemRemaining > 0 ? <VendorSettlement row={item} remaining={itemRemaining} accounts={accounts} onSaved={onSaved} /> : <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Hakediş kapandı{item.directPaid ? " · Müşteri doğrudan ödedi" : ""}.</div>}
+              {item.requiresReview ? <VendorReview row={item} onSaved={onSaved} /> : itemRemaining > 0 ? <DirectSettlementToggle row={item} remaining={itemRemaining} onSaved={onSaved} /> : <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Hakediş kapandı{item.directPaid ? " · Müşteri doğrudan ödedi" : ""}.</div>}
             </div>;
           })}
+          {!vendorItems.some((item) => item.requiresReview) && remaining > 0 ? (
+            <BulkVendorPayment rows={vendorItems} remaining={remaining} accounts={accounts} onSaved={onSaved} />
+          ) : null}
         </div>
       ) : row.requiresReview && row.source === "vendor" ? (
         <VendorReview row={row} onSaved={onSaved} />
@@ -583,6 +587,29 @@ function DetailDialog({
       )}
     </Modal>
   );
+}
+function DirectSettlementToggle({ row, remaining, onSaved }: { row: ExpenseRow; remaining: number; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  return <div className="mt-3">
+    <button type="button" onClick={() => setOpen((value) => !value)} className="text-xs font-semibold text-blue-700 hover:underline">
+      {open ? "Doğrudan ödeme girişini kapat" : `${row.payerName || "Müşteri"} doğrudan ödedi`}
+    </button>
+    {open ? <DirectVendorPayment row={row} remaining={remaining} onSaved={onSaved} /> : null}
+  </div>;
+}
+function BulkVendorPayment({ rows, remaining, accounts, onSaved }: { rows: ExpenseRow[]; remaining: number; accounts: Account[]; onSaved: () => void }) {
+  const [state, action, pending] = useActionState(payVendorAccrualsBulk, null);
+  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
+  return <form action={action} className="mt-5 grid gap-3 rounded-xl border-2 border-red-100 bg-red-50/40 p-4 sm:grid-cols-2">
+    <input type="hidden" name="accrual_ids" value={JSON.stringify(rows.map((row) => row.id))} />
+    <div className="sm:col-span-2"><b>Tek kalemde toplu ödeme</b><p className="mt-1 text-xs text-slate-500">Ödeme arkada proje hakedişlerine otomatik dağıtılır; kasada yalnızca tek hareket oluşur.</p></div>
+    <Field label="Toplu ödeme tutarı"><input name="amount" type="number" min="0.01" max={remaining} step="0.01" defaultValue={remaining} required className={inputClass} /></Field>
+    <Field label="Gider kasası"><select name="account_id" required className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></Field>
+    <Field label="Ödeme tarihi"><input name="payment_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required className={inputClass} /></Field>
+    <Field label="Not"><input name="notes" placeholder="Tuğrul aylık toplu ödeme" className={inputClass} /></Field>
+    <Result state={state} />
+    <div className="sm:col-span-2"><Button disabled={pending}>{pending ? "Kaydediliyor…" : `Toplu ${formatMoney(remaining, rows[0]?.currency)} öde`}</Button></div>
+  </form>;
 }
 function VendorSettlement({ row, remaining, accounts, onSaved }: { row: ExpenseRow; remaining: number; accounts: Account[]; onSaved: () => void }) {
   const [direct, setDirect] = useState(false);

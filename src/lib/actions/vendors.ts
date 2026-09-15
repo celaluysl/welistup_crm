@@ -218,6 +218,53 @@ export async function payVendorAccrual(_: State, fd: FormData): Promise<State> {
   return { success: "Tedarikçi ödemesi ve kasa hareketi kaydedildi." };
 }
 
+export async function payVendorAccrualsBulk(
+  _: State,
+  fd: FormData,
+): Promise<State> {
+  const p = z
+    .object({
+      accrual_ids: z.string().transform((value, ctx) => {
+        try {
+          return z.array(z.string().uuid()).min(1).parse(JSON.parse(value));
+        } catch {
+          ctx.addIssue({ code: "custom", message: "Geçersiz hakediş listesi." });
+          return z.NEVER;
+        }
+      }),
+      account_id: z.string().uuid(),
+      amount: z.coerce.number().positive(),
+      payment_date: z.string().date(),
+      notes: z.string().optional(),
+    })
+    .safeParse(Object.fromEntries(fd));
+  if (!p.success) return { error: "Toplu ödeme bilgilerini kontrol edin." };
+  const s = await createClient();
+  const { error } = await s.rpc("pay_vendor_accruals_bulk", {
+    p_accrual_ids: p.data.accrual_ids,
+    p_account_id: p.data.account_id,
+    p_amount: p.data.amount,
+    p_payment_date: p.data.payment_date,
+    p_notes: p.data.notes || null,
+  });
+  if (error)
+    return {
+      error: error.message.includes("invalid_payment_amount")
+        ? "Tutar, seçili hakedişlerin toplam kalanından büyük olamaz."
+        : error.message.includes("amount_review_required")
+          ? "Toplu ödeme öncesinde bekleyen hakediş tutarlarını onaylayın."
+          : error.message.includes("mixed_vendor_or_currency")
+            ? "Toplu ödemedeki kayıtlar aynı tedarikçi ve para biriminde olmalı."
+            : error.message,
+    };
+  revalidatePath("/vendor-payments");
+  revalidatePath("/expenses");
+  revalidatePath("/accounts");
+  revalidatePath("/transactions");
+  revalidatePath("/month-close");
+  return { success: "Toplu tedarikçi ödemesi tek kasa hareketi olarak kaydedildi." };
+}
+
 export async function settleVendorAccrualDirect(
   _: State,
   fd: FormData,
