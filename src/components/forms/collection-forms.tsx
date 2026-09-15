@@ -17,12 +17,29 @@ export function PaymentForm({
 }) {
   const [state, action, pending] = useActionState(recordPayment, null);
   const [amount, setAmount] = useState("");
+  const [fullPayment, setFullPayment] = useState(false);
   const numericAmount = Number(amount || 0);
   const excessAmount = Math.max(0, numericAmount - maxAmount);
   useEffect(() => { if (state?.success) onSuccess?.(); }, [state?.success, onSuccess]);
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
       <input type="hidden" name="receivable_id" value={receivableId} />
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={fullPayment}
+          onChange={(event) => {
+            const checked = event.target.checked;
+            setFullPayment(checked);
+            setAmount(checked ? String(maxAmount) : "");
+          }}
+          className="h-5 w-5 accent-emerald-600"
+        />
+        Ödemenin tamamı alındı
+        <span className="ml-auto text-xs font-medium">
+          Kalan tutarın tamamını kullan
+        </span>
+      </label>
       <Field label="Tahsil edilen tutar">
         <input
           name="amount"
@@ -32,7 +49,8 @@ export function PaymentForm({
           required
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
-          className={inputClass}
+          readOnly={fullPayment}
+          className={`${inputClass} ${fullPayment ? "bg-slate-100 text-slate-500" : ""}`}
         />
       </Field>
       <Field label="Ödemenin geldiği kasa">
@@ -65,7 +83,7 @@ export function PaymentForm({
       <Result state={state} />
       <div className="sm:col-span-2">
         <Button disabled={pending}>
-          {pending ? "Kaydediliyor…" : excessAmount > 0 ? "Ödemeyi ve fazla bakiyeyi kaydet" : "Parçalı ödeme kaydet"}
+          {pending ? "Kaydediliyor…" : excessAmount > 0 ? "Ödemeyi ve fazla bakiyeyi kaydet" : fullPayment ? "Tamamını tahsil et" : "Parçalı ödeme kaydet"}
         </Button>
       </div>
     </form>
