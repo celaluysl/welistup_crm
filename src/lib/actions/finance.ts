@@ -28,6 +28,38 @@ export async function generateMonthlyPeriods(
   return { success: `${data ?? 0} yeni hizmet dönemi oluşturuldu.` };
 }
 
+export async function recordManualIncome(_: State, formData: FormData): Promise<State> {
+  const parsed = z.object({
+    account_id: z.string().uuid(),
+    amount: z.coerce.number().positive(),
+    billing_preference: z.enum(["invoiced", "uninvoiced"]),
+    payment_date: z.string().date(),
+    notes: z.string().trim().min(2).max(1000),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Ekstra gelir bilgilerini kontrol edin." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("record_manual_income", {
+    p_account_id: parsed.data.account_id,
+    p_amount: parsed.data.amount,
+    p_billing_preference: parsed.data.billing_preference,
+    p_payment_date: parsed.data.payment_date,
+    p_notes: parsed.data.notes,
+  });
+  if (error) return { error: error.message.includes("billing_preference_mismatch") ? "Seçtiğiniz kasa ile faturalama türü uyuşmuyor." : error.message.includes("period_closed") ? "Kapalı aya gelir eklemek için önce ayı yeniden açın." : error.message };
+  revalidatePath("/collections"); revalidatePath("/accounts"); revalidatePath("/transactions");
+  return { success: "Ekstra gelir kasaya işlendi." };
+}
+
+export async function cancelManualIncome(_: State, formData: FormData): Promise<State> {
+  const parsed = z.string().uuid().safeParse(formData.get("income_id"));
+  if (!parsed.success) return { error: "Ekstra gelir kaydı bulunamadı." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_manual_income", { p_income_id: parsed.data });
+  if (error) return { error: error.message.includes("period_closed") ? "Kapalı aya ait kayıt kaldırılamaz." : error.message };
+  revalidatePath("/collections"); revalidatePath("/accounts"); revalidatePath("/transactions");
+  return { success: "Ekstra gelir ve kasa hareketi kaldırıldı." };
+}
+
 export async function generateYearPeriods(
   _: State,
   formData: FormData,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Grid3X3, List, Pencil, Search, X } from "lucide-react";
 import {
@@ -12,6 +12,9 @@ import {
   UnallocatedReceiptEditForm,
 } from "@/components/forms/collection-forms";
 import { formatMoney } from "@/lib/utils";
+import { cancelManualIncome, recordManualIncome } from "@/lib/actions/finance";
+import { Button } from "@/components/ui/button";
+import { Field, inputClass } from "@/components/ui/field";
 
 export type CollectionRow = {
   id: string;
@@ -66,6 +69,7 @@ type HostingPaymentTotal = {
   amount: number;
   count: number;
 };
+type ManualIncome = { id: string; amount: number; currency: string; billing: "invoiced" | "uninvoiced"; paymentDate: string; notes: string; accountId: string; accountName: string };
 const months = [
   "Ocak",
   "Şubat",
@@ -87,12 +91,14 @@ export function CollectionWorkspace({
   services,
   year,
   hostingPayments,
+  manualIncomes,
 }: {
   rows: CollectionRow[];
   accounts: Account[];
   services: { id: string; name: string }[];
   year: number;
   hostingPayments: HostingPaymentTotal[];
+  manualIncomes: ManualIncome[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -130,13 +136,16 @@ export function CollectionWorkspace({
         ),
         hostingCollected = hostingPayments
           .filter((payment) => payment.currency === "TRY")
-          .reduce((sum, payment) => sum + payment.amount, 0);
+          .reduce((sum, payment) => sum + payment.amount, 0),
+        manualCollected = manualIncomes
+          .filter((income) => income.currency === "TRY")
+          .reduce((sum, income) => sum + income.amount, 0);
       return {
         ...projectSummary,
-        collected: projectSummary.collected + hostingCollected,
+        collected: projectSummary.collected + hostingCollected + manualCollected,
       };
     },
-    [filtered, hostingPayments],
+    [filtered, hostingPayments, manualIncomes],
   );
   const hostingMonths = useMemo(() => {
     const map = new Map<number, HostingPaymentTotal[]>();
@@ -427,6 +436,7 @@ export function CollectionWorkspace({
           </table>
         </div>
       )}
+      <ManualIncomeSection incomes={manualIncomes} accounts={accounts} year={year} onSaved={() => router.refresh()} />
       {selected && (
         <PaymentModal
           row={selected}
@@ -445,6 +455,30 @@ export function CollectionWorkspace({
       )}
     </>
   );
+}
+
+function ManualIncomeSection({ incomes, accounts, year, onSaved }: { incomes: ManualIncome[]; accounts: Account[]; year: number; onSaved: () => void }) {
+  const [state, action, pending] = useActionState(recordManualIncome, null);
+  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
+  return <section className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
+    <h2 className="font-semibold">Ekstra gelirler</h2><p className="mt-1 text-xs text-slate-500">Müşteri veya projeye bağlı olmayan tahsilatları gerçek ödeme tarihiyle kasaya ekleyin.</p>
+    <form action={action} className="mt-4 grid gap-3 md:grid-cols-5">
+      <Field label="Tutar"><input name="amount" type="number" min="0.01" step="0.01" required className={inputClass}/></Field>
+      <Field label="Tür"><select name="billing_preference" required className={inputClass}><option value="invoiced">Faturalı</option><option value="uninvoiced">Faturasız</option></select></Field>
+      <Field label="Kasa"><select name="account_id" required className={inputClass}><option value="">Seçin</option>{accounts.filter((a) => a.currency === "TRY").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+      <Field label="Ödeme tarihi"><input name="payment_date" type="date" required defaultValue={`${year}-08-01`} className={inputClass}/></Field>
+      <Field label="Not"><input name="notes" required placeholder="Örn. Ağustos hesap farkı" className={inputClass}/></Field>
+      {state?.error && <p className="text-sm text-red-600 md:col-span-5">{state.error}</p>}
+      <div className="md:col-span-5"><Button disabled={pending}>{pending ? "Ekleniyor…" : "Ekstra geliri ekle"}</Button></div>
+    </form>
+    {!!incomes.length && <div className="mt-4 grid gap-2 md:grid-cols-2">{incomes.map((income) => <div key={income.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3 text-sm"><div><b>{income.paymentDate} · {income.notes}</b><div className="text-xs text-slate-500">{income.billing === "invoiced" ? "Faturalı" : "Faturasız"} · {income.accountName}</div></div><div className="flex items-center gap-3"><b>{formatMoney(income.amount,income.currency)}</b><ManualIncomeDelete id={income.id} onSaved={onSaved}/></div></div>)}</div>}
+  </section>;
+}
+
+function ManualIncomeDelete({ id, onSaved }: { id: string; onSaved: () => void }) {
+  const [state, action, pending] = useActionState(cancelManualIncome, null);
+  useEffect(() => { if (state?.success) onSaved(); }, [state?.success, onSaved]);
+  return <form action={action}><input type="hidden" name="income_id" value={id}/><button disabled={pending} onClick={(event) => { if (!window.confirm("Bu ekstra geliri ve kasa hareketini kaldırmak istiyor musunuz?")) event.preventDefault(); }} className="text-xs font-semibold text-red-600">Kaldır</button></form>;
 }
 
 function MonthCell({

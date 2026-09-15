@@ -46,6 +46,7 @@ export default async function Collections({
     { data: services },
     { data: hostingReceivables, error: hostingError },
     { data: hostingPayments },
+    { data: manualIncomes },
   ] = await Promise.all([
     receivablesQuery.order("due_date", {
       ascending: true,
@@ -73,6 +74,12 @@ export default async function Collections({
     supabase
       .from("hosting_payments")
       .select("amount,currency,payment_date")
+      .gte("payment_date", `${year}-01-01`)
+      .lte("payment_date", `${year}-12-31`)
+      .order("payment_date"),
+    supabase
+      .from("manual_incomes")
+      .select("id,amount,currency,billing_preference,payment_date,notes,account_id,accounts(name)")
       .gte("payment_date", `${year}-01-01`)
       .lte("payment_date", `${year}-12-31`)
       .order("payment_date"),
@@ -236,6 +243,16 @@ export default async function Collections({
           services={services || []}
           year={year}
           hostingPayments={hostingPaymentSummary}
+          manualIncomes={(manualIncomes || []).map((income) => ({
+            id: income.id,
+            amount: Number(income.amount),
+            currency: income.currency,
+            billing: income.billing_preference,
+            paymentDate: income.payment_date,
+            notes: income.notes,
+            accountId: income.account_id,
+            accountName: relation(income.accounts)?.name || "—",
+          }))}
         />
       )}
       {!hostingError && (
