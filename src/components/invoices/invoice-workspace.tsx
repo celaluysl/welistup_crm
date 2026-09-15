@@ -19,8 +19,8 @@ export type InvoiceWorkspaceRow = {
   invoice: { invoice_number?: string | null; invoice_date?: string | null; due_date?: string | null; status?: string; notes?: string | null } | null;
 };
 
-const labels: Record<string, string> = { waiting: "Fatura bekliyor", issued: "Fatura kesildi", payment_pending: "Ödeme bekleniyor", partial: "Kısmi ödeme", paid: "Ödendi" };
-const tones: Record<string, string> = { waiting: "bg-red-50 text-[#CD0B16]", issued: "bg-blue-50 text-blue-700", payment_pending: "bg-amber-50 text-amber-700", partial: "bg-orange-50 text-orange-700", paid: "bg-emerald-50 text-emerald-700" };
+const labels: Record<string, string> = { waiting: "Fatura bekliyor", issued: "Fatura kesildi", payment_pending: "Ödeme bekleniyor", partial: "Kısmi ödeme", paid: "Ödendi", cancelled: "Fatura iptal edildi" };
+const tones: Record<string, string> = { waiting: "bg-red-50 text-[#CD0B16]", issued: "bg-blue-50 text-blue-700", payment_pending: "bg-amber-50 text-amber-700", partial: "bg-orange-50 text-orange-700", paid: "bg-emerald-50 text-emerald-700", cancelled: "bg-slate-200 text-slate-700" };
 
 export function InvoiceWorkspace({ rows }: { rows: InvoiceWorkspaceRow[] }) {
   const [selected, setSelected] = useState<InvoiceWorkspaceRow | null>(null);

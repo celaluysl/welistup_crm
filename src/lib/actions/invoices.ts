@@ -16,6 +16,7 @@ export async function saveInvoiceTracking(
         "payment_pending",
         "partial",
         "paid",
+        "cancelled",
       ]),
       invoice_number: z.string().optional(),
       invoice_date: z.string().optional(),
@@ -37,11 +38,14 @@ export async function saveInvoiceTracking(
     return {
       error: error.message.includes("invoice_date_required")
         ? "Fatura kesildi durumunda fatura tarihi zorunludur."
+        : error.message.includes("cancellation_reason_required")
+          ? "Fatura iptal nedenini not alanına yazın."
         : error.message.includes("period_closed")
           ? "Kapalı dönemde fatura değiştirilemez."
           : error.message,
     };
   revalidatePath("/invoices");
   revalidatePath("/operations");
+  revalidatePath("/month-close", "layout");
   return { success: "Fatura takibi güncellendi." };
 }

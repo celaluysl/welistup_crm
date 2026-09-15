@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { addCollectionActivity, classifyUnallocatedReceipt, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
+import { addCollectionActivity, cancelPayment, classifyUnallocatedReceipt, recordPayment, updatePayment, updateUnallocatedReceipt } from "@/lib/actions/finance";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 
@@ -135,8 +135,9 @@ export function CollectionActivityForm({
 
 export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCancel }: { payment: { id: string; amount: number; paymentDate: string; accountId: string | null; notes: string | null }; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess: () => void; onCancel: () => void }) {
   const [state, action, pending] = useActionState(updatePayment, null);
-  useEffect(() => { if (state?.success) onSuccess(); }, [state?.success, onSuccess]);
-  return <form action={action} className="grid gap-4 sm:grid-cols-2">
+  const [cancelState, cancelAction, cancelling] = useActionState(cancelPayment, null);
+  useEffect(() => { if (state?.success || cancelState?.success) onSuccess(); }, [state?.success, cancelState?.success, onSuccess]);
+  return <><form action={action} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="payment_id" value={payment.id} />
     <Field label="Tahsil edilen tutar"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required defaultValue={payment.amount} className={inputClass} /></Field>
     <Field label="Ödemenin geldiği kasa"><select name="account_id" required defaultValue={payment.accountId || ""} className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
@@ -144,7 +145,13 @@ export function PaymentEditForm({ payment, maxAmount, accounts, onSuccess, onCan
     <Field label="Not"><input name="notes" defaultValue={payment.notes || ""} className={inputClass} /></Field>
     <Result state={state} />
     <div className="flex gap-2 sm:col-span-2"><Button disabled={pending}>{pending ? "Güncelleniyor…" : "Ödemeyi güncelle"}</Button><Button type="button" variant="secondary" onClick={onCancel}>Vazgeç</Button></div>
-  </form>;
+  </form><form action={cancelAction} className="mt-5 grid gap-3 border-t border-red-200 pt-5">
+    <input type="hidden" name="payment_id" value={payment.id} />
+    <div><b className="text-sm text-red-700">Ödeme aslında gelmediyse</b><p className="mt-1 text-xs text-slate-500">Tahsilatı iptal etmek alacağı yeniden açar ve kasa bakiyesini geri düzeltir.</p></div>
+    <Field label="İptal nedeni"><input name="cancellation_reason" required minLength={3} placeholder="Örn. Ödeme yanlışlıkla işlendi" className={inputClass} /></Field>
+    {cancelState?.error && <p className="text-sm text-red-600">{cancelState.error}</p>}
+    <div><Button type="submit" variant="danger" disabled={cancelling} onClick={(event) => { if (!window.confirm("Bu tahsilatı iptal edip alacağı yeniden açmak istiyor musunuz?")) event.preventDefault(); }}>{cancelling ? "İptal ediliyor…" : "Tahsilatı iptal et"}</Button></div>
+  </form></>;
 }
 
 export function ReceiptClassificationForm({ receiptId, services, onSuccess, onCancel }: { receiptId: string; services: { id: string; name: string }[]; onSuccess: () => void; onCancel: () => void }) {

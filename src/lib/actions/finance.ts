@@ -135,6 +135,28 @@ export async function updatePayment(
   return { success: "Ödeme güncellendi." };
 }
 
+export async function cancelPayment(
+  _: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = z.object({
+    payment_id: z.string().uuid(),
+    cancellation_reason: z.string().trim().min(3).max(1000),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "İptal nedenini yazın." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_receivable_payment", {
+    p_payment_id: parsed.data.payment_id,
+    p_reason: parsed.data.cancellation_reason,
+  });
+  if (error) return { error: error.message.includes("period_closed") ? "Kapalı aya ait tahsilatı iptal etmek için önce ayı yeniden açın." : error.message };
+  revalidatePath("/collections");
+  revalidatePath("/accounts");
+  revalidatePath("/transactions");
+  revalidatePath("/month-close", "layout");
+  return { success: "Tahsilat iptal edildi; alacak ve kasa bakiyesi geri açıldı." };
+}
+
 export async function classifyUnallocatedReceipt(
   _: State,
   formData: FormData,

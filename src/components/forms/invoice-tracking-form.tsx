@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveInvoiceTracking } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -20,6 +20,7 @@ export function InvoiceTrackingForm({
   defaultDueDate: string | null;
 }) {
   const [state, action, pending] = useActionState(saveInvoiceTracking, null);
+  const [status, setStatus] = useState(invoice?.status || "waiting");
   return (
     <form
       action={action}
@@ -29,7 +30,8 @@ export function InvoiceTrackingForm({
       <Field label="Fatura durumu">
         <select
           name="status"
-          defaultValue={invoice?.status || "waiting"}
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
           className={inputClass}
         >
           <option value="waiting">Fatura bekliyor</option>
@@ -37,6 +39,7 @@ export function InvoiceTrackingForm({
           <option value="payment_pending">Ödeme bekleniyor</option>
           <option value="partial">Kısmi ödeme</option>
           <option value="paid">Ödendi</option>
+          <option value="cancelled">Fatura iptal edildi</option>
         </select>
       </Field>
       <Field label="Fatura numarası">
@@ -69,6 +72,7 @@ export function InvoiceTrackingForm({
           className={inputClass}
         />
       </Field>
+      {status === "cancelled" && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 sm:col-span-2">İptal nedenini not alanına yazın. Fatura iptal edilir ancak müşterinin alacağı silinmez; gerekiyorsa yeni fatura kesilebilir.</div>}
       {state?.success && (
         <p className="sm:col-span-2 text-sm text-emerald-700">
           {state.success}
@@ -79,7 +83,7 @@ export function InvoiceTrackingForm({
       )}
       <div className="sm:col-span-2">
         <Button disabled={pending}>
-          {pending ? "Kaydediliyor…" : "Fatura takibini kaydet"}
+          {pending ? "Kaydediliyor…" : status === "cancelled" ? "Fatura iptalini kaydet" : "Fatura takibini kaydet"}
         </Button>
       </div>
     </form>
