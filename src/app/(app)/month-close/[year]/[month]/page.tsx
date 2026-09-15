@@ -18,7 +18,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   const s = await createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const end = new Date(year, month, 0).toISOString().slice(0, 10);
-  const [closeResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, cashReceivablesResult, hostingPaymentsResult, manualIncomesResult] = await Promise.all([
+  const [closeResult, expensesResult, vendorsResult, payrollResult, overdueResult, ownershipResult, salaryProfilesResult, accountsResult, cashReceivablesResult, hostingPaymentsResult, manualIncomesResult, cashSummaryResult] = await Promise.all([
     s.from("month_closes").select("*,month_close_checklist(*),profit_distributions(*,profiles(first_name,last_name))").eq("year", year).eq("month", month).maybeSingle(),
     s.from("manual_expenses").select("id,name,category,amount,status,billing_preference,manual_expense_payments(amount,payment_date,accounts(name))").eq("year", year).eq("month", month).neq("status", "cancelled"),
     s.from("vendor_accruals").select("id,amount,status,billing_preference,vendors(name),projects(name),vendor_payments(amount,payment_date,payment_channel,accounts(name))").eq("year", year).eq("month", month).neq("status", "cancelled"),
@@ -30,6 +30,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
     s.from("receivables").select("payments(amount,payment_date,counts_as_cash,notes,accounts(name)),unallocated_customer_receipts(amount,received_date,status,notes,accounts(name)),clients(company_name),projects!inner(name,status),service_periods!inner(year,month)").eq("service_periods.year", year).gte("service_periods.month", year === 2026 ? 8 : 1).eq("projects.status", "active"),
     s.from("hosting_payments").select("amount,payment_date,notes,accounts(name),hosting_receivables(hosting_subscriptions(domain,account_label),clients(company_name))").gte("payment_date", start).lte("payment_date", end),
     s.from("manual_incomes").select("amount,payment_date,notes,accounts(name)").gte("payment_date", start).lte("payment_date", end),
+    s.rpc("monthly_collection_cash_summary", { p_year: year, p_month: month }),
   ]);
 
   const close = closeResult.data;
@@ -58,7 +59,8 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
   }, 0);
   const hostingCash = sum((hostingPaymentsResult.data || []) as Row[], "amount");
   const manualCash = sum((manualIncomesResult.data || []) as Row[], "amount");
-  const cashIncome = projectPaymentCash + excessReceiptCash + hostingCash + manualCash;
+  const cashSummary = (cashSummaryResult.data || {}) as Row;
+  const cashIncome = Number(cashSummary.total ?? projectPaymentCash + excessReceiptCash + hostingCash + manualCash);
   const incomeRows = [
     ...collectionRows.flatMap((receivable) => {
       const client = relationName(receivable.clients);
@@ -134,7 +136,7 @@ export default async function MonthClose({ params }: { params: Promise<{ year: s
       </div>
 
       <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint={`Tahsilat ${formatMoney(projectPaymentCash)} + ek ${formatMoney(excessReceiptCash)} + bağımsız ${formatMoney(manualCash)} + hosting ${formatMoney(hostingCash)}`} />
+        <ClosingMetric label="Toplam gelen para" value={cashIncome} tone="green" hint={`Tahsilat ${formatMoney(Number(cashSummary.project_payments ?? projectPaymentCash))} + ek ${formatMoney(Number(cashSummary.excess_receipts ?? excessReceiptCash))} + bağımsız ${formatMoney(Number(cashSummary.manual_income ?? manualCash))} + hosting ${formatMoney(Number(cashSummary.hosting_income ?? hostingCash))}`} />
         <ClosingMetric label="Faturasız giderler" value={uninvoicedCost} tone="orange" hint="Manuel gider + tedarikçi" />
         <ClosingMetric label="Faturalı giderler" value={invoicedCost} tone="blue" hint="KDV dâhil gider + tedarikçi" />
         <ClosingMetric label="Maaş gideri" value={payrollCost} tone="purple" hint={`${salaryProfiles.length} aktif maaş`} />

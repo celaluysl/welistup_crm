@@ -14,7 +14,7 @@ import {
 export default async function Collections({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const params = await searchParams;
   const now = new Date();
@@ -23,6 +23,8 @@ export default async function Collections({
     Number.isInteger(parsedYear) && parsedYear >= 2000 && parsedYear <= 2200
       ? parsedYear
       : now.getFullYear();
+  const parsedMonth = Number(params.month);
+  const selectedMonth = Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth : null;
   const supabase = await createClient();
   const [{ error: periodGenerationError }] = await Promise.all([
     supabase.rpc("generate_service_year_periods", { p_year: year }),
@@ -215,7 +217,7 @@ export default async function Collections({
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Link
-            href={`/collections?year=${year - 1}`}
+            href={`/collections?year=${year - 1}${selectedMonth ? `&month=${selectedMonth}` : ""}`}
             className="rounded-lg border bg-white px-3 py-2 text-sm"
           >
             ← {year - 1}
@@ -224,11 +226,19 @@ export default async function Collections({
             {year}
           </div>
           <Link
-            href={`/collections?year=${year + 1}`}
+            href={`/collections?year=${year + 1}${selectedMonth ? `&month=${selectedMonth}` : ""}`}
             className="rounded-lg border bg-white px-3 py-2 text-sm"
           >
             {year + 1} →
           </Link>
+          <form className="flex items-center gap-2">
+            <input type="hidden" name="year" value={year} />
+            <select name="month" defaultValue={selectedMonth || ""} className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700" aria-label="Üst özet ayı">
+              <option value="">Tüm aylar</option>
+              {['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'].map((name,index)=><option key={name} value={index+1}>{name}</option>)}
+            </select>
+            <button className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Özeti filtrele</button>
+          </form>
         </div>
         <YearPeriodButton year={year} />
       </div>
@@ -242,6 +252,7 @@ export default async function Collections({
           accounts={accounts || []}
           services={services || []}
           year={year}
+          selectedMonth={selectedMonth}
           hostingPayments={hostingPaymentSummary}
           manualIncomes={(manualIncomes || []).map((income) => ({
             id: income.id,

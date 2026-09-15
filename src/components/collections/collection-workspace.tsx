@@ -90,6 +90,7 @@ export function CollectionWorkspace({
   accounts,
   services,
   year,
+  selectedMonth,
   hostingPayments,
   manualIncomes,
 }: {
@@ -97,6 +98,7 @@ export function CollectionWorkspace({
   accounts: Account[];
   services: { id: string; name: string }[];
   year: number;
+  selectedMonth: number | null;
   hostingPayments: HostingPaymentTotal[];
   manualIncomes: ManualIncome[];
 }) {
@@ -120,32 +122,38 @@ export function CollectionWorkspace({
   );
   const summary = useMemo(
     () => {
-      const projectSummary = filtered
-        .filter((row) => row.currency === "TRY")
+      const tryRows = filtered.filter((row) => row.currency === "TRY");
+      const periodRows = tryRows.filter(
+        (row) => selectedMonth === null || row.month === selectedMonth,
+      );
+      const projectSummary = periodRows
         .reduce(
           (value, row) => ({
             expected: value.expected + row.total,
-            collected: value.collected + totalCollected(row),
             remaining:
               value.remaining +
               (row.settledWithoutCash ? 0 : Math.max(0, row.total - row.paid)),
             overdue:
               value.overdue + (isOverdue(row) ? row.total - row.paid : 0),
           }),
-          { expected: 0, collected: 0, remaining: 0, overdue: 0 },
+          { expected: 0, remaining: 0, overdue: 0 },
+        ),
+        projectCollected = tryRows.reduce(
+          (sum, row) => sum + totalCollected(row, year, selectedMonth),
+          0,
         ),
         hostingCollected = hostingPayments
-          .filter((payment) => payment.currency === "TRY")
+          .filter((payment) => payment.currency === "TRY" && (selectedMonth === null || payment.month === selectedMonth))
           .reduce((sum, payment) => sum + payment.amount, 0),
         manualCollected = manualIncomes
-          .filter((income) => income.currency === "TRY")
+          .filter((income) => income.currency === "TRY" && (selectedMonth === null || Number(income.paymentDate.slice(5, 7)) === selectedMonth))
           .reduce((sum, income) => sum + income.amount, 0);
       return {
         ...projectSummary,
-        collected: projectSummary.collected + hostingCollected + manualCollected,
+        collected: projectCollected + hostingCollected + manualCollected,
       };
     },
-    [filtered, hostingPayments, manualIncomes],
+    [filtered, hostingPayments, manualIncomes, selectedMonth, year],
   );
   const hostingMonths = useMemo(() => {
     const map = new Map<number, HostingPaymentTotal[]>();
@@ -545,12 +553,12 @@ function excessForRow(row: CollectionRow) {
     0,
   );
 }
-function totalCollected(row: CollectionRow) {
+function totalCollected(row: CollectionRow, year?: number, month?: number | null) {
   return (
     row.payments
-      .filter((payment) => payment.countsAsCash)
+      .filter((payment) => payment.countsAsCash && (month == null || (Number(payment.paymentDate.slice(0, 4)) === year && Number(payment.paymentDate.slice(5, 7)) === month)))
       .reduce((sum, payment) => sum + payment.amount, 0) +
-    row.excessReceipts.reduce((sum, receipt) => sum + receipt.amount, 0)
+    row.excessReceipts.filter((receipt) => month == null || (Number(receipt.receivedDate.slice(0, 4)) === year && Number(receipt.receivedDate.slice(5, 7)) === month)).reduce((sum, receipt) => sum + receipt.amount, 0)
   );
 }
 function Status({ row }: { row: CollectionRow }) {
