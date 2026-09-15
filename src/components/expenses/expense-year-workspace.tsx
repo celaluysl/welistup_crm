@@ -893,6 +893,8 @@ function Payment({
 }) {
   const action = row.source === "vendor" ? payVendorAccrual : payManualExpense;
   const [state, formAction, pending] = useActionState(action, null);
+  const [fullPayment, setFullPayment] = useState(false);
+  const [amount, setAmount] = useState("");
   useEffect(() => {
     if (state?.success) onSaved();
   }, [state?.success, onSaved]);
@@ -906,6 +908,22 @@ function Payment({
         name={row.source === "vendor" ? "accrual_id" : "expense_id"}
         value={row.id}
       />
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={fullPayment}
+          onChange={(event) => {
+            const checked = event.target.checked;
+            setFullPayment(checked);
+            setAmount(checked ? String(remaining) : "");
+          }}
+          className="h-5 w-5 accent-emerald-600"
+        />
+        Ödemenin tamamı yapıldı
+        <span className="ml-auto text-xs font-medium">
+          Kalan tutarın tamamını kullan
+        </span>
+      </label>
       <Field label="Ödeme tutarı">
         <input
           name="amount"
@@ -913,9 +931,11 @@ function Payment({
           min="0.01"
           max={remaining}
           step="0.01"
-          defaultValue={remaining}
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          readOnly={fullPayment}
           required
-          className={inputClass}
+          className={`${inputClass} ${fullPayment ? "bg-slate-100 text-slate-500" : ""}`}
         />
       </Field>
       <Field label="Gider kasası">
@@ -943,7 +963,11 @@ function Payment({
       <Result state={state} />
       <div className="sm:col-span-2">
         <Button disabled={pending}>
-          {pending ? "Kaydediliyor…" : "Ödemeyi kaydet"}
+          {pending
+            ? "Kaydediliyor…"
+            : fullPayment
+              ? "Tamamını öde"
+              : "Ödemeyi kaydet"}
         </Button>
       </div>
     </form>
