@@ -8,7 +8,13 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { createClient } from "@/lib/supabase/server";
 
-type Payment = { amount: number; payment_channel?: string; payer_name?: string | null };
+type Payment = {
+  amount: number;
+  payment_date: string;
+  payment_channel?: string;
+  payer_name?: string | null;
+  accounts?: unknown;
+};
 export default async function Expenses({
   searchParams,
 }: {
@@ -24,11 +30,11 @@ export default async function Expenses({
   await s.rpc("generate_recurring_manual_expenses", {
     p_until: `${year}-12-31`,
   });
-  const [vendorResult, definitionResult, manualResult, accountResult, transactionResult] = await Promise.all([
+  const [vendorResult, definitionResult, manualResult, accountResult] = await Promise.all([
     s
       .from("vendor_accruals")
       .select(
-        "id,vendor_assignment_id,month,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,requires_amount_review,vendors(name),projects(name,clients(company_name)),project_services(services(name)),vendor_payments(amount,payment_channel,payer_name)",
+        "id,vendor_assignment_id,month,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,requires_amount_review,vendors(name),projects(name,clients(company_name)),project_services(services(name)),vendor_payments(amount,payment_date,payment_channel,payer_name,accounts(name))",
       )
       .eq("year", year)
       .eq("billing_preference", billing)
@@ -44,7 +50,7 @@ export default async function Expenses({
     s
       .from("manual_expenses")
       .select(
-        "id,template_id,month,name,category,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,manual_expense_payments(amount)",
+        "id,template_id,month,name,category,net_amount,vat_rate,vat_amount,amount,currency,billing_preference,due_date,notes,manual_expense_payments(amount,payment_date,accounts(name))",
       )
       .eq("year", year)
       .eq("billing_preference", billing)
@@ -55,26 +61,11 @@ export default async function Expenses({
       .select("id,name,currency,billing_preference,opening_balance")
       .eq("status", "active")
       .order("name"),
-    s
-      .from("finance_transactions")
-      .select("account_id,transaction_date,transaction_type,amount")
-      .gte("transaction_date", `${year}-01-01`)
-      .lte("transaction_date", `${year}-12-31`),
   ]);
   const accountNames = billing === "invoiced"
     ? { source: "Şirket Tahsilat Kasası", target: "Şirket Gider Kasası", label: "Faturalı gider kasası" }
     : { source: "Faturasız Tahsilat Kasası", target: "Faturasız Gider Kasası", label: "Faturasız gider kasası" };
   const targetAccount = (accountResult.data || []).find((account) => account.name === accountNames.target);
-  const replenishments = Array.from({ length: 12 }, (_, index) => {
-    const month = index + 1;
-    const monthTransactions = (transactionResult.data || []).filter((transaction) =>
-      transaction.account_id === targetAccount?.id && Number(String(transaction.transaction_date).slice(5, 7)) === month,
-    );
-    const spent = monthTransactions
-      .filter((transaction) => transaction.transaction_type === "expense")
-      .reduce((total, transaction) => total + Math.abs(Number(transaction.amount || 0)), 0);
-    return { month, spent };
-  });
   const vendorRows: ExpenseRow[] = (vendorResult.data || []).map((r) => {
     const project = rel(r.projects) as { name?: string; clients?: unknown } | null;
     const payments = (r.vendor_payments as Payment[] | null) || [];
@@ -105,6 +96,13 @@ export default async function Expenses({
       requiresReview: r.requires_amount_review,
       payerName: rel(project?.clients)?.company_name || project?.name || "Müşteri",
       directPaid: payments.filter((p) => p.payment_channel === "client_direct").reduce((a, p) => a + Number(p.amount), 0),
+      payments: payments.map((payment) => ({
+        amount: Number(payment.amount),
+        paymentDate: payment.payment_date,
+        accountName: rel(payment.accounts)?.name || null,
+        channel: payment.payment_channel,
+        payerName: payment.payer_name,
+      })),
     };
   });
   const aggregatedVendors = [...vendorRows.reduce((map, row) => {
@@ -115,6 +113,7 @@ export default async function Expenses({
       current.net += row.net; current.vat += row.vat; current.total += row.total;
       current.paid += row.paid; current.directPaid = (current.directPaid || 0) + (row.directPaid || 0);
       current.requiresReview ||= row.requiresReview; current.items!.push(row);
+      current.payments.push(...row.payments);
     }
     return map;
   }, new Map<string, ExpenseRow>()).values()];
@@ -144,6 +143,11 @@ export default async function Expenses({
       dueDate: r.due_date,
       notes: r.notes,
       requiresReview: false,
+      payments: ((r.manual_expense_payments as Payment[] | null) || []).map((payment) => ({
+        amount: Number(payment.amount),
+        paymentDate: payment.payment_date,
+        accountName: rel(payment.accounts)?.name || null,
+      })),
     })),
   ];
   const systemCashLabels = ["faturalı kasa", "faturasız kasa", "faturalı gider kasası", "faturasız gider kasası"];
@@ -168,8 +172,7 @@ export default async function Expenses({
     vendorResult.error ||
     manualResult.error ||
     definitionResult.error ||
-    accountResult.error ||
-    transactionResult.error;
+    accountResult.error;
   return (
     <>
       <PageHeader
@@ -245,8 +248,12 @@ export default async function Expenses({
             label: accountNames.label,
             monthLabel: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][selectedMonth - 1],
             fixedAmount: Number(targetAccount?.opening_balance || 0),
-            spent: replenishments[selectedMonth - 1]?.spent || 0,
-            remaining: Number(targetAccount?.opening_balance || 0) - (replenishments[selectedMonth - 1]?.spent || 0),
+            spent: rows
+              .filter((row) => row.month === selectedMonth)
+              .reduce((total, row) => total + row.paid - (row.directPaid || 0), 0),
+            remaining: Number(targetAccount?.opening_balance || 0) - rows
+              .filter((row) => row.month === selectedMonth)
+              .reduce((total, row) => total + row.paid - (row.directPaid || 0), 0),
           }}
           year={year}
           billing={billing}

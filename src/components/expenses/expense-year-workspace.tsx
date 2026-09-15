@@ -43,7 +43,15 @@ export type ExpenseRow = {
   requiresReview: boolean;
   payerName?: string;
   directPaid?: number;
+  payments: ExpensePayment[];
   items?: ExpenseRow[];
+};
+type ExpensePayment = {
+  amount: number;
+  paymentDate: string;
+  accountName: string | null;
+  channel?: string;
+  payerName?: string | null;
 };
 export type ExpenseDefinition = {
   id: string;
@@ -498,6 +506,29 @@ function DetailDialog({
           Müşterilerin doğrudan ödediği: <b>{formatMoney(row.directPaid, row.currency)}</b>. Bu tutar hakedişten düşüldü, kasa çıkışına eklenmedi.
         </div>
       ) : null}
+      {row.payments.length > 0 && (
+        <div className="mt-4 border-t pt-4">
+          <h3 className="mb-2 font-semibold">Ödeme geçmişi</h3>
+          <div className="space-y-2">
+            {row.payments.map((payment, index) => (
+              <div
+                key={`${payment.paymentDate}-${payment.amount}-${index}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+              >
+                <div>
+                  <b>{formatDate(payment.paymentDate)}</b>
+                  <div className="text-xs text-slate-500">
+                    {payment.channel === "client_direct"
+                      ? `${payment.payerName || "Müşteri"} doğrudan ödedi`
+                      : payment.accountName || "Gider kasası"}
+                  </div>
+                </div>
+                <b>{formatMoney(payment.amount, row.currency)}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {row.source === "manual" && (
         <ManualExpenseEditor row={row} onSaved={onSaved} />
       )}
@@ -994,6 +1025,10 @@ function Metric({
       <b className="mt-1 block text-lg">{formatMoney(value, currency)}</b>
     </div>
   );
+}
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${day}.${month}.${year}`;
 }
 function Result({
   state,
