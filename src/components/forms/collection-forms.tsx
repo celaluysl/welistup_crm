@@ -90,14 +90,15 @@ export function PaymentForm({
   );
 }
 
-export function BulkPaymentForm({ receivableIds, maxAmount, accounts, onSuccess }: { receivableIds: string[]; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess?: () => void }) {
+export function BulkPaymentForm({ receivableIds, maxAmount, accounts, onSuccess, defaultFullPayment = true, coverageLabel }: { receivableIds: string[]; maxAmount: number; accounts: { id: string; name: string; currency: string }[]; onSuccess?: () => void; defaultFullPayment?: boolean; coverageLabel?: string }) {
   const [state, action, pending] = useActionState(recordBulkPayment, null);
-  const [fullPayment, setFullPayment] = useState(true);
-  const [amount, setAmount] = useState(String(maxAmount));
+  const [fullPayment, setFullPayment] = useState(defaultFullPayment);
+  const [amount, setAmount] = useState(defaultFullPayment ? String(maxAmount) : "");
   useEffect(() => { if (state?.success) onSuccess?.(); }, [state?.success, onSuccess]);
   return <form action={action} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="receivable_ids" value={JSON.stringify(receivableIds)} />
-    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 sm:col-span-2"><input type="checkbox" checked={fullPayment} onChange={(event) => { setFullPayment(event.target.checked); setAmount(event.target.checked ? String(maxAmount) : ""); }} className="h-5 w-5 accent-emerald-600"/>Ödemenin tamamı alındı<span className="ml-auto text-xs font-medium">Tüm hizmetlerin kalanını kullan</span></label>
+    {coverageLabel && <div className="rounded-lg bg-blue-50 p-3 text-sm font-medium text-blue-800 sm:col-span-2">{coverageLabel} · Toplam beklenen {maxAmount.toLocaleString("tr-TR", { style: "currency", currency: accounts[0]?.currency || "TRY" })}</div>}
+    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 sm:col-span-2"><input type="checkbox" checked={fullPayment} onChange={(event) => { setFullPayment(event.target.checked); setAmount(event.target.checked ? String(maxAmount) : ""); }} className="h-5 w-5 accent-emerald-600"/>Seçilen ayların tamamı alındı<span className="ml-auto text-xs font-medium">Seçili dönemlerin kalanını kullan</span></label>
     <Field label="Tahsil edilen toplam"><input name="amount" type="number" min="0.01" max={maxAmount} step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} readOnly={fullPayment} className={`${inputClass} ${fullPayment ? "bg-slate-100 text-slate-500" : ""}`}/></Field>
     <Field label="Ödemenin geldiği kasa"><select name="account_id" required className={inputClass}><option value="">Seçin</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></Field>
     <Field label="Gerçek ödeme tarihi"><input name="payment_date" type="date" required defaultValue={new Date().toISOString().slice(0,10)} className={inputClass}/></Field>

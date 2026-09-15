@@ -395,6 +395,8 @@ export function CollectionWorkspace({
       {selected && (
         <PaymentModal
           row={selected}
+          allRows={rows}
+          year={year}
           accounts={accounts.filter(
             (account) => account.currency === selected.currency,
           )}
@@ -534,12 +536,16 @@ function Filter({
 }
 function PaymentModal({
   row,
+  allRows,
+  year,
   accounts,
   services,
   onClose,
   onSaved,
 }: {
   row: CollectionRow;
+  allRows: CollectionRow[];
+  year: number;
   accounts: Account[];
   services: { id: string; name: string }[];
   onClose: () => void;
@@ -560,6 +566,7 @@ function PaymentModal({
   const [editingReceipt, setEditingReceipt] = useState<
     CollectionRow["excessReceipts"][number] | null
   >(null);
+  const [multiMonthPayment, setMultiMonthPayment] = useState(false);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
@@ -623,18 +630,26 @@ function PaymentModal({
           )}
           {remaining > 0 ? (
             <>
-              <h3 className="mb-4 font-semibold">Ödeme kaydet</h3>
-              {detailItems.length > 1 ? <BulkPaymentForm
-                receivableIds={detailItems.map((item) => item.id)}
-                maxAmount={remaining}
-                accounts={accounts}
-                onSuccess={onSaved}
-              /> : <PaymentForm
-                receivableId={row.id}
-                maxAmount={remaining}
-                accounts={accounts}
-                onSuccess={onSaved}
-              />}
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="font-semibold">Ödeme kaydet</h3>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-blue-700">
+                  <input type="checkbox" checked={multiMonthPayment} onChange={(event) => setMultiMonthPayment(event.target.checked)} className="size-4 accent-blue-600" />
+                  Birden fazla ayı kapat
+                </label>
+              </div>
+              {multiMonthPayment ? (
+                <MultiMonthPaymentForm row={row} allRows={allRows} year={year} accounts={accounts} onSaved={onSaved} />
+              ) : detailItems.length > 1 ? <BulkPaymentForm
+                  receivableIds={detailItems.map((item) => item.id)}
+                  maxAmount={remaining}
+                  accounts={accounts}
+                  onSuccess={onSaved}
+                /> : <PaymentForm
+                  receivableId={row.id}
+                  maxAmount={remaining}
+                  accounts={accounts}
+                  onSuccess={onSaved}
+                />}
             </>
           ) : (
             <div className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">
@@ -758,6 +773,26 @@ function PaymentModal({
       </div>
     </div>
   );
+}
+
+function MultiMonthPaymentForm({ row, allRows, year, accounts, onSaved }: { row: CollectionRow; allRows: CollectionRow[]; year: number; accounts: Account[]; onSaved: () => void }) {
+  const [startMonth, setStartMonth] = useState(row.month);
+  const [monthCount, setMonthCount] = useState(3);
+  const endMonth = Math.min(12, startMonth + monthCount - 1);
+  const customerPeriods = allRows.filter((period) => period.clientId === row.clientId && period.billing === row.billing && period.currency === row.currency && period.month >= startMonth && period.month <= endMonth);
+  const openItems = customerPeriods.flatMap((period) => period.items || [period]).filter((item) => item.total - item.paid > 0);
+  const receivableIds = openItems.map((item) => item.id);
+  const maxAmount = openItems.reduce((sum, item) => sum + Math.max(0, item.total - item.paid), 0);
+  const availableMonths = [...new Set(allRows.filter((period) => period.clientId === row.clientId && period.billing === row.billing && period.currency === row.currency).map((period) => period.month))].sort((a, b) => a - b);
+  const coverageLabel = `${months[startMonth - 1]}–${months[endMonth - 1]} ${year} (${endMonth - startMonth + 1} ay)`;
+
+  return <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+    <div className="mb-4 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-medium text-slate-500">Başlangıç ayı<select value={startMonth} onChange={(event) => setStartMonth(Number(event.target.value))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">{availableMonths.map((month) => <option key={month} value={month}>{months[month - 1]}</option>)}</select></label>
+      <label className="text-xs font-medium text-slate-500">Kaç aylık ödeme?<input type="number" min={1} max={12 - startMonth + 1} value={monthCount} onChange={(event) => setMonthCount(Math.max(1, Math.min(12 - startMonth + 1, Number(event.target.value) || 1)))} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700" /></label>
+    </div>
+    {receivableIds.length ? <BulkPaymentForm key={`${startMonth}-${monthCount}-${maxAmount}`} receivableIds={receivableIds} maxAmount={maxAmount} accounts={accounts} onSuccess={onSaved} defaultFullPayment={false} coverageLabel={coverageLabel} /> : <div className="rounded-lg bg-white p-3 text-sm text-slate-500">Seçilen aylarda açık alacak bulunmuyor.</div>}
+  </div>;
 }
 function Mini({
   label,
