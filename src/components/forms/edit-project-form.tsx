@@ -12,7 +12,7 @@ type Project = {
   description: string | null;
   start_date: string | null;
   end_date: string | null;
-  status: "active" | "inactive" | "archived";
+  status: "active" | "on_hold" | "completed" | "archived";
   billing_preference: "invoiced" | "uninvoiced";
   is_white_label: boolean;
   project_services: {
@@ -155,7 +155,8 @@ export function EditProjectForm({
           className={inputClass}
         >
           <option value="active">Aktif</option>
-          <option value="inactive">Pasif / durduruldu</option>
+          <option value="on_hold">Beklemede / geçici durduruldu</option>
+          <option value="completed">Tamamlandı / çalışma bitti</option>
           <option value="archived">Arşiv</option>
         </select>
       </Field>

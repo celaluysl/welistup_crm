@@ -12,7 +12,7 @@ const projectSchema = z.object({
   billing_preference: z.enum(["invoiced", "uninvoiced"]),
   is_white_label: z.string().optional(),
   description: z.string().optional(),
-  status: z.enum(["active", "inactive", "archived"]).optional(),
+  status: z.enum(["active", "on_hold", "completed", "archived"]).optional(),
   end_date: z.string().optional(),
 });
 export async function createProject(
