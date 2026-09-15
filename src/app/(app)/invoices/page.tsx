@@ -41,13 +41,13 @@ export default async function Invoices({
         title="Fatura Takibi"
         description="Gerçek fatura başka sistemde kesilir; burada numara, tarih, vade ve ödeme durumu izlenir."
       />
-      <Card className="mb-6 p-5">
+      <Card className="mb-3 p-3">
         <form className="flex flex-wrap gap-2">
           <input
             name="year"
             type="number"
             defaultValue={year}
-            className="h-10 w-24 rounded-lg border px-3"
+            className="h-9 w-24 rounded-lg border px-3"
           />
           <input
             name="month"
@@ -55,12 +55,12 @@ export default async function Invoices({
             min="1"
             max="12"
             defaultValue={month}
-            className="h-10 w-20 rounded-lg border px-3"
+            className="h-9 w-20 rounded-lg border px-3"
           />
           <select
             name="status"
             defaultValue={q.status || ""}
-            className="h-10 rounded-lg border px-3 text-sm"
+            className="h-9 rounded-lg border px-3 text-sm"
           >
             <option value="">Tüm durumlar</option>
             {Object.entries(labels).map(([v, l]) => (
@@ -69,7 +69,7 @@ export default async function Invoices({
               </option>
             ))}
           </select>
-          <button className="h-10 rounded-lg border px-4 text-sm font-semibold">
+          <button className="h-9 rounded-lg border px-4 text-sm font-semibold">
             Filtrele
           </button>
         </form>

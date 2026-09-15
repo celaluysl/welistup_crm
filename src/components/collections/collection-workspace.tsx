@@ -163,7 +163,7 @@ export function CollectionWorkspace({
 
   return (
     <>
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <Summary
           label="Beklenen tahsilat"
           value={formatMoney(summary.expected, "TRY")}
@@ -183,7 +183,7 @@ export function CollectionWorkspace({
           danger
         />
       </div>
-      <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <label className="min-w-60 flex-1 text-xs font-medium text-slate-500">
           <span className="mb-1.5 block">Müşteri veya proje ara</span>
           <div className="relative">
@@ -228,11 +228,11 @@ export function CollectionWorkspace({
         </div>
       </div>
       {view === "matrix" ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="max-h-[calc(100vh-260px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[2200px] text-left text-xs">
             <thead className="sticky top-0 bg-slate-50 text-slate-500">
               <tr>
-                <th className="sticky left-0 z-20 min-w-72 border-b border-r bg-slate-50 px-4 py-3">
+                <th className="sticky left-0 z-20 min-w-72 border-b border-r bg-slate-50 px-3 py-2">
                   Müşteri / Proje
                 </th>
                 <th className="min-w-32 border-b px-3">Hizmet</th>
@@ -240,7 +240,7 @@ export function CollectionWorkspace({
                 {months.map((month) => (
                   <th
                     key={month}
-                    className="min-w-32 border-b border-l px-3 text-center"
+                    className="min-w-28 border-b border-l px-2 py-2 text-center"
                   >
                     {month}
                   </th>
@@ -249,7 +249,7 @@ export function CollectionWorkspace({
             </thead>
             <tbody>
               <tr className="border-b bg-orange-50/30">
-                <td className="sticky left-0 z-10 border-r bg-orange-50 px-4 py-3">
+                <td className="sticky left-0 z-10 border-r bg-orange-50 px-3 py-2">
                   <div className="font-semibold text-slate-800">
                     Toplu Sunucu Ödemeleri
                   </div>
@@ -268,7 +268,7 @@ export function CollectionWorkspace({
                   return (
                     <td key={index} className="border-l p-1.5">
                       {payments.length ? (
-                        <div className="min-h-16 rounded-lg border border-orange-100 bg-orange-50 px-2 py-1.5 text-left">
+                        <div className="min-h-12 rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 text-left">
                           {payments.map((payment) => (
                             <div key={payment.currency}>
                               <b className="text-orange-900">
@@ -281,7 +281,7 @@ export function CollectionWorkspace({
                           ))}
                         </div>
                       ) : (
-                        <div className="h-16 rounded-lg bg-slate-50" />
+                        <div className="h-12 rounded-lg bg-slate-50" />
                       )}
                     </td>
                   );
@@ -292,7 +292,7 @@ export function CollectionWorkspace({
                   key={group.key}
                   className="border-b last:border-0"
                 >
-                  <td className="sticky left-0 z-10 border-r bg-white px-4 py-3">
+                  <td className="sticky left-0 z-10 border-r bg-white px-3 py-2">
                     <div className="font-semibold text-slate-800">
                       {group.project}
                     </div>
@@ -316,7 +316,7 @@ export function CollectionWorkspace({
                             onClick={() => setSelected(row)}
                           />
                         ) : (
-                          <div className="h-16 rounded-lg bg-slate-50" />
+                          <div className="h-12 rounded-lg bg-slate-50" />
                         )}
                       </td>
                     );
@@ -332,7 +332,7 @@ export function CollectionWorkspace({
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-white">
+        <div className="max-h-[calc(100vh-260px)] overflow-auto rounded-xl border bg-white">
           <table className="w-full min-w-[1000px] text-left text-sm">
             <thead className="border-b bg-slate-50 text-xs text-slate-500">
               <tr>
@@ -346,7 +346,7 @@ export function CollectionWorkspace({
                   "Vade",
                   "Durum",
                 ].map((x) => (
-                  <th key={x} className="px-4 py-3">
+                  <th key={x} className="px-3 py-2">
                     {x}
                   </th>
                 ))}
@@ -359,18 +359,18 @@ export function CollectionWorkspace({
                   onClick={() => setSelected(row)}
                   className="cursor-pointer hover:bg-slate-50"
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2">
                     <b>{row.project}</b>
                     <div className="text-xs text-slate-400">{row.client}</div>
                   </td>
-                  <td className="px-4">{row.service}</td>
-                  <td className="px-4">
+                  <td className="px-3">{row.service}</td>
+                  <td className="px-3">
                     {months[row.month - 1]} {year}
                   </td>
-                  <td className="px-4">
+                  <td className="px-3">
                     {formatMoney(row.total, row.currency)}
                   </td>
-                  <td className="px-4 text-emerald-700">
+                  <td className="px-3 text-emerald-700">
                     <b>{formatMoney(totalCollected(row), row.currency)}</b>
                     {excessForRow(row) > 0 && (
                       <div className="text-xs text-amber-700">
@@ -379,11 +379,11 @@ export function CollectionWorkspace({
                       </div>
                     )}
                   </td>
-                  <td className="px-4 font-medium">
+                  <td className="px-3 font-medium">
                     {formatMoney(row.total - row.paid, row.currency)}
                   </td>
-                  <td className="px-4">{row.dueDate || "—"}</td>
-                  <td className="px-4">
+                  <td className="px-3">{row.dueDate || "—"}</td>
+                  <td className="px-3">
                     <Status row={row} />
                   </td>
                 </tr>
@@ -431,7 +431,7 @@ function MonthCell({
   return (
     <button
       onClick={onClick}
-      className={`h-16 w-full rounded-lg p-2 text-left transition ${tone}`}
+      className={`h-12 w-full rounded-lg px-2 py-1 text-left transition ${tone}`}
     >
       <div className="font-bold text-slate-800">
         {collected ? formatMoney(collected, row.currency) : "Ödeme bekliyor"}
@@ -498,10 +498,10 @@ function Summary({
   danger?: boolean;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
+    <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
       <div className="text-sm text-slate-500">{label}</div>
       <div
-        className={`mt-2 text-xl font-bold ${positive ? "text-emerald-700" : danger ? "text-[#CD0B16]" : "text-slate-900"}`}
+        className={`mt-1 text-lg font-bold ${positive ? "text-emerald-700" : danger ? "text-[#CD0B16]" : "text-slate-900"}`}
       >
         {value}
       </div>
