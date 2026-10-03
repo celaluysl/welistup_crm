@@ -6,6 +6,7 @@ import {
 } from "@/components/expenses/expense-year-workspace";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { AutoSubmitSelect } from "@/components/ui/auto-submit-select";
 import { createClient } from "@/lib/supabase/server";
 
 type Payment = {
@@ -205,7 +206,7 @@ export default async function Expenses({
           <form className="flex items-center gap-2">
             <input type="hidden" name="year" value={year} />
             <input type="hidden" name="type" value={billing} />
-            <select
+            <AutoSubmitSelect
               name="month"
               defaultValue={selectedMonth}
               className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700"
@@ -214,7 +215,7 @@ export default async function Expenses({
               {["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"].map((monthName, index) => (
                 <option key={monthName} value={index + 1}>{monthName}</option>
               ))}
-            </select>
+            </AutoSubmitSelect>
             <button className="h-10 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Ayı göster
             </button>
